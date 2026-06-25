@@ -2,11 +2,13 @@ import {
   ArrowLeft,
   Bell,
   Boxes,
+  Check,
   CircleHelp,
   Command,
   FilePenLine,
   LogOut,
   MessageSquareText,
+  Mic,
   PencilLine,
   Plus,
   Save,
@@ -64,6 +66,68 @@ const defaultQuestionSets: IntakeQuestionSet[] = [
     example: "The Day 30 adoption gate is in progress; leads need proof that every active project has current evidence.",
   },
 ];
+
+// The assistant has an identity so the conversation feels like someone, not a form.
+const assistantName = "Ada";
+const userFirstName = "Jordan";
+
+// Continuity: what the user said last time, so the opener can pick up the thread.
+const lastUpdateSummary = { when: "Tuesday", flagged: "the API migration was blocked" };
+
+type CapturedCategory = "progress" | "blocker" | "risk";
+
+// Warm conversation openers so the user never faces a blank box.
+const conversationStarters: { label: string; seed: string }[] = [
+  { label: "Report progress", seed: "Since the last update, we've " },
+  { label: "Share a blocker", seed: "We're blocked on " },
+  { label: "Flag a risk", seed: "A risk I'm watching is " },
+];
+
+const capturedLabels: { key: CapturedCategory; label: string }[] = [
+  { key: "progress", label: "Progress" },
+  { key: "blocker", label: "Blocker" },
+  { key: "risk", label: "Risk" },
+];
+
+function timeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Morning";
+  if (hour < 18) return "Afternoon";
+  return "Evening";
+}
+
+// Time-aware + picks up last week's thread, so it reads like a colleague who's been paying attention.
+function buildOpeningMessage(): string {
+  return `${timeGreeting()}, ${userFirstName}. Last ${lastUpdateSummary.when} you flagged that ${lastUpdateSummary.flagged} — did that clear up, or is it still stuck?`;
+}
+
+// Lightweight intent read so the "captured" tray can fill in as the user talks.
+function detectCategory(text: string): CapturedCategory | null {
+  const value = text.toLowerCase();
+  if (/(block|stuck|waiting on|held up|can't|cannot|stalled)/.test(value)) return "blocker";
+  if (/(risk|concern|worried|might slip|could slip|fragile|exposure|danger)/.test(value)) return "risk";
+  if (/(done|shipped|finished|complete|progress|wrapped|launched|made|merged|since the last update|we've|we have)/.test(value)) {
+    return "progress";
+  }
+  return null;
+}
+
+// Reflect-back + one gentle follow-up, then a wrap-up. Tone adapts to how much effort the user put in.
+function buildAssistantReply(userText: string, userTurnNumber: number): string {
+  const words = userText.trim().split(/\s+/);
+  const snippet = words.slice(0, 12).join(" ");
+  const trimmed = words.length > 12 ? `${snippet}…` : snippet;
+  const thorough = words.length > 25 ? "That's thorough — thanks. " : "";
+
+  if (userTurnNumber === 1) {
+    const lead = words.length < 4 ? "Quick one — got it. " : "Got it. ";
+    return `${lead}So the headline is “${trimmed}”. Anything blocking it, or is it on track?`;
+  }
+  if (userTurnNumber === 2) {
+    return `${thorough}Noted. Want to capture who owns it and a rough date, or skip for now?`;
+  }
+  return `${thorough}That's a solid check-in. Here's what I pulled together — look right?`;
+}
 
 export function TacDashboardPreview() {
   return <TacDashboard />;
@@ -176,17 +240,108 @@ export function TacDashboard({
 }
 
 function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
-  const [messages, setMessages] = useState<DocumentationChatMessage[]>([]);
+  const [messages, setMessages] = useState<DocumentationChatMessage[]>(() => [
+    {
+      id: 1,
+      text: buildOpeningMessage(),
+      sender: "assistant",
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    },
+  ]);
   const [inputValue, setInputValue] = useState("");
   const [chatMode, setChatMode] = useState<ChatMode>("chat");
   const [questionSets, setQuestionSets] = useState<IntakeQuestionSet[]>(defaultQuestionSets);
   const [configSaved, setConfigSaved] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isAssistantTyping, setIsAssistantTyping] = useState(false);
+  const [isLogged, setIsLogged] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const replyTimeoutRef = useRef<number | null>(null);
+
+  const userMessages = messages.filter((message) => message.sender === "user");
+  const userTurnCount = userMessages.length;
+  const hasUserReplied = userTurnCount > 0;
+
+  // Watch the documentation build in real time: which categories the user has covered.
+  const captured = useMemo(() => {
+    const result: Record<CapturedCategory, string | null> = { progress: null, blocker: null, risk: null };
+    for (const message of userMessages) {
+      const category = detectCategory(message.text);
+      if (category && !result[category]) {
+        result[category] = message.text;
+      }
+    }
+    return result;
+  }, [userMessages]);
+
+  const showSummary = userTurnCount >= 3;
+
+  function handleStarter(seed: string) {
+    setInputValue(seed);
+    requestAnimationFrame(() => {
+      const composer = composerRef.current;
+      if (composer) {
+        composer.focus();
+        composer.setSelectionRange(seed.length, seed.length);
+      }
+    });
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const dialogNode = dialogRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const focusableSelector =
+      'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    function getFocusables() {
+      if (!dialogNode) {
+        return [] as HTMLElement[];
+      }
+      return Array.from(dialogNode.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (node) => node.offsetParent !== null,
+      );
+    }
+
+    // Move focus into the dialog on open.
+    (getFocusables()[0] ?? dialogNode)?.focus();
+
+    function handleFocusTrap(event: KeyboardEvent) {
+      if (event.key !== "Tab") {
+        return;
+      }
+      const items = getFocusables();
+      if (items.length === 0) {
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleFocusTrap);
+
+    // Lock background scroll while the dialog is open.
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleFocusTrap);
+      document.body.style.overflow = previousBodyOverflow;
+      previouslyFocused?.focus();
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -215,25 +370,49 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
       timestamp: getTimestamp(),
     };
 
+    const turnNumber = userTurnCount + 1;
     setMessages((current) => [...current, userMessage]);
     setInputValue("");
+    setIsRecording(false);
+    sendAssistantReply(buildAssistantReply(trimmedMessage, turnNumber));
+  }
 
+  // Show a "thinking" indicator before the reply lands, so the bot feels alive instead of instant/robotic.
+  function sendAssistantReply(text: string) {
     if (replyTimeoutRef.current !== null) {
       window.clearTimeout(replyTimeoutRef.current);
     }
 
+    setIsAssistantTyping(true);
     replyTimeoutRef.current = window.setTimeout(() => {
-      const assistantMessage: DocumentationChatMessage = {
-        id: Date.now() + 1,
-        text: configSaved
-          ? "Noted. I'll compare this against the saved intake configuration before updating documentation."
-          : "Noted. I'll add that to the project log.",
-        sender: "assistant",
-        timestamp: getTimestamp(),
-      };
+      setIsAssistantTyping(false);
+      setMessages((current) => [
+        ...current,
+        {
+          id: Date.now() + 1,
+          text,
+          sender: "assistant",
+          timestamp: getTimestamp(),
+        },
+      ]);
+    }, 1100);
+  }
 
-      setMessages((current) => [...current, assistantMessage]);
-    }, 1000);
+  // One-tap escape for slow days so the check-in never feels like a forced ceremony.
+  function handleAllQuiet() {
+    const userMessage: DocumentationChatMessage = {
+      id: Date.now(),
+      text: "All quiet — no real changes since the last update.",
+      sender: "user",
+      timestamp: getTimestamp(),
+    };
+    setMessages((current) => [...current, userMessage]);
+    sendAssistantReply("Easy — I'll note steady state and keep the existing docs as-is. Have a good one.");
+  }
+
+  function handleConfirmSummary() {
+    setIsLogged(true);
+    sendAssistantReply("Logged. The Overview reflects this now — thanks for keeping it current.");
   }
 
   function handleComposerKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
@@ -289,12 +468,17 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
       <button
         className="documentation-chat-backdrop"
         type="button"
+        tabIndex={-1}
         aria-label="Close documentation chat"
         onClick={onClose}
       />
       <section
+        ref={dialogRef}
         className="documentation-chat"
+        role="dialog"
+        aria-modal="true"
         aria-label="Project documentation chat"
+        tabIndex={-1}
         data-documentation-chat-root
       >
         <header className="documentation-chat-header">
@@ -340,7 +524,7 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
                 <span>
                   <MessageSquareText aria-hidden="true" />
                 </span>
-                <strong>Update me on the project</strong>
+                <strong>{assistantName} · keeping your project docs current</strong>
               </div>
 
               <div className="documentation-chat-day-divider">
@@ -358,38 +542,131 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
                   }
                   key={message.id}
                 >
+                  {message.sender === "assistant" ? (
+                    <span className="documentation-message-author">{assistantName}</span>
+                  ) : null}
                   <div className="documentation-message-bubble">
                     <p>{message.text}</p>
                   </div>
                   <time>{message.timestamp}</time>
                 </div>
               ))}
+
+              {isAssistantTyping ? (
+                <div className="documentation-message-row is-assistant" aria-live="polite">
+                  <span className="documentation-message-author">{assistantName}</span>
+                  <div className="documentation-message-bubble documentation-typing" aria-label={`${assistantName} is typing`}>
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                </div>
+              ) : null}
+
+              {showSummary && !isAssistantTyping ? (
+                <div className={isLogged ? "documentation-summary-card is-logged" : "documentation-summary-card"}>
+                  {isLogged ? (
+                    <div className="documentation-summary-done">
+                      <span className="documentation-summary-check">
+                        <Check aria-hidden="true" />
+                      </span>
+                      <strong>Update logged</strong>
+                      <span>The Overview reflects this now.</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="documentation-summary-heading">Here's your update</div>
+                      <ul className="documentation-summary-list">
+                        {capturedLabels.map(({ key, label }) =>
+                          captured[key] ? (
+                            <li key={key}>
+                              <span className={`documentation-summary-tag tag-${key}`}>{label}</span>
+                              <p>{captured[key]}</p>
+                            </li>
+                          ) : null,
+                        )}
+                      </ul>
+                      <button className="documentation-summary-confirm" type="button" onClick={handleConfirmSummary}>
+                        <Check aria-hidden="true" />
+                        <span>Looks good — log it</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : null}
+
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
         {chatMode === "chat" ? (
-          <form className="documentation-chat-composer" onSubmit={handleSendMessage}>
-            <label>
-              <span className="sr-only">Project update</span>
-              <textarea
-                placeholder="Type project update..."
-                rows={1}
-                value={inputValue}
-                onChange={(event) => setInputValue(event.target.value)}
-                onKeyDown={handleComposerKeyDown}
-              />
-            </label>
-            <button
-              type="submit"
-              aria-label="Send update"
-              title="Send update"
-              disabled={!inputValue.trim()}
-            >
-              <SendHorizontal aria-hidden="true" />
-            </button>
-          </form>
+          <div className="documentation-chat-footer">
+            <div className="documentation-captured-tray" aria-label="Captured in this update">
+              <span className="documentation-captured-label">Capturing</span>
+              {capturedLabels.map(({ key, label }) => (
+                <span
+                  key={key}
+                  className={captured[key] ? `documentation-captured-pill is-captured tag-${key}` : "documentation-captured-pill"}
+                >
+                  {captured[key] ? <Check aria-hidden="true" /> : <span className="documentation-captured-dot" aria-hidden="true" />}
+                  {label}
+                </span>
+              ))}
+            </div>
+            {!hasUserReplied ? (
+              <div className="documentation-chat-starters" aria-label="Quick ways to start">
+                {conversationStarters.map((starter) => (
+                  <button
+                    key={starter.label}
+                    className="documentation-starter-chip"
+                    type="button"
+                    onClick={() => handleStarter(starter.seed)}
+                  >
+                    {starter.label}
+                  </button>
+                ))}
+                <button
+                  className="documentation-starter-chip is-quiet"
+                  type="button"
+                  onClick={handleAllQuiet}
+                >
+                  All quiet today
+                </button>
+              </div>
+            ) : null}
+            <form className="documentation-chat-composer" onSubmit={handleSendMessage}>
+              <label>
+                <span className="sr-only">Project update</span>
+                <textarea
+                  ref={composerRef}
+                  placeholder={isRecording ? "Listening…" : "What's on your mind?"}
+                  rows={1}
+                  value={inputValue}
+                  onChange={(event) => setInputValue(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                />
+              </label>
+              <button
+                className={isRecording ? "documentation-mic-button is-recording" : "documentation-mic-button"}
+                type="button"
+                aria-label={isRecording ? "Stop voice recording" : "Record with voice"}
+                aria-pressed={isRecording}
+                title={isRecording ? "Stop recording" : "Voice"}
+                onClick={() => setIsRecording((current) => !current)}
+              >
+                <Mic aria-hidden="true" />
+              </button>
+              <button
+                type="submit"
+                aria-label="Send update"
+                title="Send update"
+                disabled={!inputValue.trim()}
+              >
+                <SendHorizontal aria-hidden="true" />
+              </button>
+            </form>
+          </div>
         ) : (
           <div className="documentation-config-actions">
             <button className="documentation-config-secondary" type="button" onClick={addQuestionSet}>
