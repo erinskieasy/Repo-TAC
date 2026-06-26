@@ -11,7 +11,14 @@ import {
   UserRoundCheck,
   UsersRound,
 } from "lucide-react";
-import type { MilestonesSectionData, NavItem, ProjectTab, TacDashboardData } from "./types";
+import type { MilestonesSectionData, NavItem, ProjectTab, TacDashboardData, TeamMember } from "./types";
+
+// The project team roster — shared by the milestones assignee picker and the Atlas owner picker.
+export const teamMembers: TeamMember[] = [
+  { id: "tiffany", name: "Tiffany Tomblin", avatar: "person" },
+  { id: "erinski", name: "Erinski Easy", avatar: "person" },
+  { id: "mikale", name: "Mikale Meetoo", avatar: "person" },
+];
 
 export const sidebarItems: NavItem[] = [
   { label: "Profile", icon: UserRoundCheck },

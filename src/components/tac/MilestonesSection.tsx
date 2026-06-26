@@ -3,12 +3,25 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Copy,
+  Download,
+  FileText,
   Pencil,
   Plus,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import {
+  documentFileStamp,
+  downloadHtmlAsDoc,
+  escapeHtml,
+  printHtmlAsPdf,
+  wrapHtmlDocument,
+} from "./documentExport";
+import { teamMembers } from "./tacData";
 import type {
   MilestoneItem,
   MilestoneStatus,
@@ -20,6 +33,8 @@ import type {
 
 type MilestonesSectionProps = {
   data: MilestonesSectionData;
+  milestones: MilestoneItem[];
+  setMilestones: Dispatch<SetStateAction<MilestoneItem[]>>;
 };
 
 type EditTarget =
@@ -36,17 +51,7 @@ type CellEditor =
   | { kind: "taskStatus"; milestoneId: string; taskId: string }
   | null;
 
-type StaffMember = {
-  id: string;
-  name: string;
-  avatar: "person";
-};
-
-const staffMembers: StaffMember[] = [
-  { id: "tiffany", name: "Tiffany Tomblin", avatar: "person" },
-  { id: "erinski", name: "Erinski Easy", avatar: "person" },
-  { id: "mikale", name: "Mikale Meetoo", avatar: "person" },
-];
+const staffMembers = teamMembers;
 
 const milestoneStatuses: MilestoneStatus[] = ["Completed", "In progress", "Not started"];
 const taskStatuses: TaskStatus[] = ["To do", "In progress", "Done"];
@@ -146,14 +151,148 @@ function fromInputDate(value: string) {
   return `${monthName} ${Number(day)}`;
 }
 
-export function MilestonesSection({ data }: MilestonesSectionProps) {
-  const [milestones, setMilestones] = useState(data.items);
+type MilestoneReportEntry = {
+  id: string;
+  title: string;
+  status: MilestoneStatus;
+  progressPercent: number;
+  owner: string;
+  dueDate: string;
+  completedTasks: MilestoneTask[];
+  openTasks: MilestoneTask[];
+};
+
+type MilestoneReport = {
+  generatedOn: string;
+  totalMilestones: number;
+  completedMilestones: number;
+  totalTasks: number;
+  doneTasks: number;
+  completionPercent: number;
+  entries: MilestoneReportEntry[];
+};
+
+// Build a progress report from current milestone state: what's completed and what's still open.
+function buildMilestoneReport(milestones: MilestoneItem[]): MilestoneReport {
+  const entries: MilestoneReportEntry[] = milestones.map((milestone) => {
+    const completedTasks = milestone.tasks.filter((task) => task.status === "Done");
+    const openTasks = milestone.tasks.filter((task) => task.status !== "Done");
+    return {
+      id: milestone.id,
+      title: milestone.title,
+      status: milestone.status,
+      progressPercent: milestone.progressPercent,
+      owner: milestone.owner,
+      dueDate: milestone.dueDate,
+      completedTasks,
+      openTasks,
+    };
+  });
+
+  const totalTasks = milestones.reduce((sum, milestone) => sum + milestone.tasks.length, 0);
+  const doneTasks = entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
+
+  return {
+    generatedOn: new Date().toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }),
+    totalMilestones: milestones.length,
+    completedMilestones: milestones.filter((milestone) => milestone.status === "Completed").length,
+    totalTasks,
+    doneTasks,
+    completionPercent: totalTasks === 0 ? 0 : Math.round((doneTasks / totalTasks) * 100),
+    entries,
+  };
+}
+
+// Plain-text version for copy/paste into emails, docs, or Slack.
+function reportToPlainText(report: MilestoneReport): string {
+  const lines: string[] = [];
+  lines.push(`Milestone Report — ${report.generatedOn}`);
+  lines.push("");
+  lines.push("Overview");
+  lines.push(`- Milestones: ${report.completedMilestones} of ${report.totalMilestones} completed`);
+  lines.push(`- Tasks: ${report.doneTasks} of ${report.totalTasks} done (${report.completionPercent}%)`);
+  lines.push("");
+
+  for (const entry of report.entries) {
+    lines.push(`${entry.title} — ${entry.status} (${entry.progressPercent}%)`);
+    lines.push(`Owner: ${entry.owner} · Due ${entry.dueDate}`);
+    if (entry.completedTasks.length > 0) {
+      lines.push("Completed:");
+      for (const task of entry.completedTasks) {
+        lines.push(`  [x] ${task.title}`);
+      }
+    }
+    if (entry.openTasks.length > 0) {
+      lines.push("Still open:");
+      for (const task of entry.openTasks) {
+        lines.push(`  [ ] ${task.title} (${task.status})`);
+      }
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n").trim();
+}
+
+// A standalone, styled HTML document used for both the .doc download and the print-to-PDF window.
+function reportToHtml(report: MilestoneReport): string {
+  const entriesHtml = report.entries
+    .map((entry) => {
+      const done = entry.completedTasks
+        .map((task) => `<li class="done">&#10003;&nbsp; ${escapeHtml(task.title)}</li>`)
+        .join("");
+      const open = entry.openTasks
+        .map((task) => `<li class="open">&#9675;&nbsp; ${escapeHtml(task.title)} <em>(${escapeHtml(task.status)})</em></li>`)
+        .join("");
+
+      return `
+        <div class="entry">
+          <div class="entry-head">
+            <h2>${escapeHtml(entry.title)}</h2>
+            <span class="pill">${escapeHtml(entry.status)}</span>
+          </div>
+          <p class="meta">${entry.progressPercent}% &middot; ${escapeHtml(entry.owner)} &middot; Due ${escapeHtml(entry.dueDate)}</p>
+          ${done ? `<h3 class="done-label">Completed (${entry.completedTasks.length})</h3><ul>${done}</ul>` : ""}
+          ${open ? `<h3>Still open (${entry.openTasks.length})</h3><ul>${open}</ul>` : ""}
+        </div>`;
+    })
+    .join("");
+
+  const body = `
+  <h1>Milestone Report</h1>
+  <p class="generated">Generated ${escapeHtml(report.generatedOn)}</p>
+  <div class="summary">
+    <div><strong>${report.completedMilestones}/${report.totalMilestones}</strong><span>Milestones complete</span></div>
+    <div><strong>${report.doneTasks}/${report.totalTasks}</strong><span>Tasks done</span></div>
+    <div><strong>${report.completionPercent}%</strong><span>Overall complete</span></div>
+  </div>
+  ${entriesHtml || "<p>No milestones yet.</p>"}`;
+
+  return wrapHtmlDocument(`Milestone Report — ${report.generatedOn}`, body);
+}
+
+function downloadReportDoc(report: MilestoneReport) {
+  downloadHtmlAsDoc(reportToHtml(report), `milestone-report-${documentFileStamp()}.doc`);
+}
+
+function printReportPdf(report: MilestoneReport) {
+  printHtmlAsPdf(reportToHtml(report));
+}
+
+export function MilestonesSection({ data, milestones, setMilestones }: MilestonesSectionProps) {
   const [expandedIds, setExpandedIds] = useState(
     () => new Set(data.items.filter((item) => item.defaultExpanded).map((item) => item.id)),
   );
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [editDraft, setEditDraft] = useState("");
   const [cellEditor, setCellEditor] = useState<CellEditor>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  const report = useMemo(() => buildMilestoneReport(milestones), [milestones]);
 
   useEffect(() => {
     if (!cellEditor) {
@@ -497,10 +636,16 @@ export function MilestonesSection({ data }: MilestonesSectionProps) {
           <h1 id="milestones-title">Milestones</h1>
           <span>{milestoneCount} milestones</span>
         </div>
-        <button className="milestone-primary-action" type="button" onClick={addMilestone}>
-          <Plus aria-hidden="true" />
-          <span>Add milestone</span>
-        </button>
+        <div className="milestone-heading-actions">
+          <button className="milestone-secondary-action" type="button" onClick={() => setReportOpen(true)}>
+            <FileText aria-hidden="true" />
+            <span>Generate report</span>
+          </button>
+          <button className="milestone-primary-action" type="button" onClick={addMilestone}>
+            <Plus aria-hidden="true" />
+            <span>Add milestone</span>
+          </button>
+        </div>
       </div>
 
       <div className="milestone-toolbar">
@@ -557,7 +702,206 @@ export function MilestonesSection({ data }: MilestonesSectionProps) {
           <span>Add milestone</span>
         </button>
       </div>
+
+      {reportOpen ? <MilestoneReportModal report={report} onClose={() => setReportOpen(false)} /> : null}
     </section>
+  );
+}
+
+function MilestoneReportModal({ report, onClose }: { report: MilestoneReport; onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const dialogNode = dialogRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const focusableSelector =
+      'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
+    function getFocusables() {
+      if (!dialogNode) {
+        return [] as HTMLElement[];
+      }
+      return Array.from(dialogNode.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (node) => node.offsetParent !== null,
+      );
+    }
+
+    (getFocusables()[0] ?? dialogNode)?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const items = getFocusables();
+      if (items.length === 0) {
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [onClose]);
+
+  function handleCopy() {
+    const text = reportToPlainText(report);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => setCopied(false));
+    }
+  }
+
+  return (
+    <div className="milestone-report-layer" role="presentation">
+      <button
+        className="milestone-report-backdrop"
+        type="button"
+        tabIndex={-1}
+        aria-label="Close report"
+        onClick={onClose}
+      />
+      <section
+        ref={dialogRef}
+        className="milestone-report"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="milestone-report-title"
+        tabIndex={-1}
+      >
+        <header className="milestone-report-header">
+          <div>
+            <span>Generated {report.generatedOn}</span>
+            <strong id="milestone-report-title">Milestone report</strong>
+          </div>
+          <button type="button" aria-label="Close report" title="Close" onClick={onClose}>
+            <X aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="milestone-report-summary">
+          <div className="milestone-report-stat">
+            <strong>
+              {report.completedMilestones}/{report.totalMilestones}
+            </strong>
+            <span>Milestones complete</span>
+          </div>
+          <div className="milestone-report-stat">
+            <strong>
+              {report.doneTasks}/{report.totalTasks}
+            </strong>
+            <span>Tasks done</span>
+          </div>
+          <div className="milestone-report-stat">
+            <strong>{report.completionPercent}%</strong>
+            <span>Overall complete</span>
+          </div>
+        </div>
+
+        <div className="milestone-report-body">
+          {report.entries.length === 0 ? (
+            <p className="milestone-report-empty">No milestones yet — add one to generate a report.</p>
+          ) : (
+            report.entries.map((entry) => (
+              <article className="milestone-report-entry" key={entry.id}>
+                <div className="milestone-report-entry-head">
+                  <h3>{entry.title}</h3>
+                  <StatusPill status={entry.status} />
+                </div>
+                <p className="milestone-report-meta">
+                  {entry.progressPercent}% · {entry.owner} · Due {entry.dueDate}
+                </p>
+
+                {entry.completedTasks.length > 0 ? (
+                  <div className="milestone-report-group">
+                    <span className="milestone-report-group-label is-done">
+                      Completed ({entry.completedTasks.length})
+                    </span>
+                    <ul>
+                      {entry.completedTasks.map((task) => (
+                        <li key={task.id} className="is-done">
+                          <Check aria-hidden="true" />
+                          {task.title}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {entry.openTasks.length > 0 ? (
+                  <div className="milestone-report-group">
+                    <span className="milestone-report-group-label">Still open ({entry.openTasks.length})</span>
+                    <ul>
+                      {entry.openTasks.map((task) => (
+                        <li key={task.id}>
+                          <span className="milestone-report-open-dot" aria-hidden="true" />
+                          {task.title}
+                          <span className="milestone-report-open-status">{task.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {entry.completedTasks.length === 0 && entry.openTasks.length === 0 ? (
+                  <p className="milestone-report-meta">No tasks yet.</p>
+                ) : null}
+              </article>
+            ))
+          )}
+        </div>
+
+        <footer className="milestone-report-footer">
+          <div className="milestone-report-export">
+            <button
+              className={copied ? "milestone-report-action is-copied" : "milestone-report-action"}
+              type="button"
+              onClick={handleCopy}
+            >
+              {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              <span>{copied ? "Copied" : "Copy"}</span>
+            </button>
+            <button
+              className="milestone-report-action"
+              type="button"
+              onClick={() => downloadReportDoc(report)}
+            >
+              <FileText aria-hidden="true" />
+              <span>Word (.doc)</span>
+            </button>
+            <button
+              className="milestone-report-action"
+              type="button"
+              onClick={() => printReportPdf(report)}
+            >
+              <Download aria-hidden="true" />
+              <span>PDF</span>
+            </button>
+          </div>
+          <button className="milestone-report-done" type="button" onClick={onClose}>
+            Done
+          </button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
