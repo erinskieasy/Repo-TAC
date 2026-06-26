@@ -5091,3 +5091,105 @@ body {
   font-size: 11px;
   font-weight: 600;
 }
+
+/* GitHub connect card in the Pulse */
+.pulse-source-github {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: stretch;
+}
+
+.pulse-source-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pulse-github-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.pulse-source-action.is-primary {
+  border-color: transparent;
+  background: #1d70e8;
+  color: #fff;
+}
+
+.pulse-source-action.is-primary:hover:not(:disabled) {
+  background: #1a63cf;
+}
+
+.pulse-source-action.is-ghost {
+  display: inline-grid;
+  place-items: center;
+}
+
+.pulse-source-action svg {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+}
+
+.pulse-source-action.is-ghost svg {
+  margin-right: 0;
+}
+
+.pulse-github-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  border-top: 1px solid #1f2b3a;
+  padding-top: 14px;
+}
+
+.pulse-github-label {
+  color: #cbd5e1;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.pulse-github-input {
+  height: 42px;
+  border: 1px solid #2b3a4d;
+  border-radius: 10px;
+  background: #0f1722;
+  color: #f1f5f9;
+  padding: 0 13px;
+  font-size: 14px;
+}
+
+.pulse-github-input:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 1px;
+  border-color: #3b82f6;
+}
+
+.pulse-github-help {
+  margin: 2px 0 4px;
+  color: #7c8aa0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pulse-github-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pulse-github-error {
+  margin: 12px 0 0;
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pulse-github-status {
+  margin: 12px 0 0;
+  color: #6ee7b7;
+  font-size: 13px;
+  font-weight: 600;
+}

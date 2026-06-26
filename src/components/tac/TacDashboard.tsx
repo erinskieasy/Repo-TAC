@@ -59,19 +59,15 @@ type ProjectUpdate = {
   entries: { label: string; text: string }[];
 };
 
+type DashboardView = "overview" | "milestones" | "pulse" | "reporting";
+
 type TacDashboardProps = {
   data?: TacDashboardData;
   tabs?: ProjectTab[];
   navItems?: NavItem[];
-  view?: "overview" | "milestones";
+  view?: DashboardView;
   onNewProject?: () => void;
 };
-
-type DashboardView = "overview" | "milestones" | "pulse";
-  view?: DashboardView;
-};
-
-type DashboardView = "overview" | "milestones" | "reporting";
 
 type DocumentationChatMessage = {
   id: number;
@@ -298,7 +294,7 @@ export function TacDashboard({
       active:
         (activeView === "overview" && tab.label === "Overview") ||
         (activeView === "milestones" && tab.label === "Milestones") ||
-        (activeView === "pulse" && tab.label === "Activity"),
+        (activeView === "pulse" && tab.label === "Activity") ||
         (activeView === "reporting" && tab.label === "Reporting"),
     }));
   }, [activeView, tabs]);
@@ -343,14 +339,6 @@ export function TacDashboard({
         />
         <ProjectTabs tabs={resolvedTabs} onTabSelect={setActiveView} />
         <section
-          className={activeView === "milestones" ? "tac-page tac-page-milestones" : "tac-page"}
-          aria-label={activeView === "pulse" ? "Project pulse" : undefined}
-          aria-labelledby={
-            activeView === "milestones"
-              ? "milestones-title"
-              : activeView === "overview"
-                ? "overview-title"
-                : undefined
           className={
             activeView === "milestones"
               ? "tac-page tac-page-milestones"
@@ -358,12 +346,15 @@ export function TacDashboard({
                 ? "tac-page tac-page-reporting"
                 : "tac-page"
           }
+          aria-label={activeView === "pulse" ? "Project pulse" : undefined}
           aria-labelledby={
             activeView === "milestones"
               ? "milestones-title"
               : activeView === "reporting"
                 ? "reporting-title"
-                : "overview-title"
+                : activeView === "overview"
+                  ? "overview-title"
+                  : undefined
           }
         >
           {activeView === "milestones" ? (
@@ -374,6 +365,7 @@ export function TacDashboard({
               projectUpdates={projectUpdates}
               onConfirmSignal={handleLogUpdate}
               onTellAtlas={() => setDocumentationChatOpen(true)}
+            />
           ) : activeView === "reporting" ? (
             <ReportingSection
               data={data.reporting}
@@ -438,9 +430,11 @@ export function TacDashboard({
       {documentationChatOpen ? (
         <DocumentationChatWindow
           milestones={milestones}
+          latestAtlasNote={getLatestAtlasNote(projectUpdates)}
           onClose={() => setDocumentationChatOpen(false)}
           onLogUpdate={handleLogUpdate}
           onAttachUpdate={handleAttachUpdate}
+          onOpenOperatingDocument={() => setOperatingDocumentOpen(true)}
         />
       ) : null}
 
@@ -1481,16 +1475,15 @@ function ProjectTabButton({
   onTabSelect: (view: DashboardView) => void;
 }) {
   const mappedView: DashboardView | null =
-  const mappedView =
     tab.label === "Overview"
       ? "overview"
       : tab.label === "Milestones"
         ? "milestones"
         : tab.label === "Activity"
           ? "pulse"
-        : tab.label === "Reporting"
-          ? "reporting"
-          : null;
+          : tab.label === "Reporting"
+            ? "reporting"
+            : null;
 
   return (
     <button
