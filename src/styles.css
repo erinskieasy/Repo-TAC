@@ -245,6 +245,93 @@ body {
   background: #172029;
 }
 
+/* Download project operating document (.doc / PDF). */
+.download-control {
+  position: relative;
+}
+
+.download-button {
+  display: inline-flex;
+  height: 42px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #284057;
+  border-radius: 999px;
+  background: #0e1722;
+  padding: 0 16px 0 18px;
+  color: #dbeafe;
+  cursor: pointer;
+  font-weight: 650;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.download-button:hover {
+  border-color: #3b82f6;
+  background: #122033;
+  color: #fff;
+}
+
+.download-button svg:first-child {
+  width: 18px;
+  height: 18px;
+}
+
+.download-button svg:last-child {
+  width: 15px;
+  height: 15px;
+  opacity: 0.7;
+}
+
+.download-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 90;
+  display: grid;
+  gap: 2px;
+  min-width: 188px;
+  border: 1px solid #28323d;
+  border-radius: 14px;
+  background: #11161d;
+  padding: 6px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+
+.download-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  padding: 0 12px;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  transition: background 130ms ease;
+}
+
+.download-menu-item:hover {
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.download-menu-item svg {
+  width: 16px;
+  height: 16px;
+  color: #94a3b8;
+}
+
+.download-control :focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
 .search-pill {
   display: flex;
   width: 310px;
@@ -803,6 +890,329 @@ body {
 .milestone-primary-action svg {
   width: 19px;
   height: 19px;
+}
+
+.milestone-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Secondary action — subordinate to the blue "Add milestone" primary CTA. */
+.milestone-secondary-action {
+  display: inline-flex;
+  height: 60px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #2b3743;
+  border-radius: 18px;
+  background: #141a21;
+  padding: 0 24px;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 720;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.milestone-secondary-action:hover {
+  border-color: #3b82f6;
+  background: #18222e;
+  color: #fff;
+}
+
+.milestone-secondary-action svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* ── Milestone report modal ───────────────────────────────── */
+.milestone-report-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 44px;
+}
+
+.milestone-report-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(4, 7, 12, 0.66);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+
+.milestone-report {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(720px, calc(100vw - 88px));
+  max-height: min(760px, calc(100dvh - 88px));
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 26px;
+  background: #11161d;
+  color: #f8fafc;
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.56);
+}
+
+.milestone-report-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.45);
+  padding: 26px 28px 20px;
+}
+
+.milestone-report-header span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.milestone-report-header strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 740;
+}
+
+.milestone-report-header button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.6);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.milestone-report-header button:hover {
+  color: #fff;
+}
+
+.milestone-report-header button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.milestone-report-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.45);
+  padding: 20px 28px;
+}
+
+.milestone-report-stat {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #232d39;
+  border-radius: 14px;
+  background: #0e1319;
+  padding: 14px 16px;
+}
+
+.milestone-report-stat strong {
+  font-size: 26px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.milestone-report-stat span {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.milestone-report-body {
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  gap: 18px;
+  padding: 22px 28px;
+}
+
+.milestone-report-empty {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.milestone-report-entry {
+  border: 1px solid #232d39;
+  border-radius: 16px;
+  background: #0e1319;
+  padding: 18px 20px;
+}
+
+.milestone-report-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.milestone-report-entry-head h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.milestone-report-meta {
+  margin: 6px 0 0;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 520;
+}
+
+.milestone-report-group {
+  margin-top: 14px;
+}
+
+.milestone-report-group-label {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.milestone-report-group-label.is-done {
+  color: #6ee7b7;
+}
+
+.milestone-report-group ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.milestone-report-group li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 520;
+}
+
+.milestone-report-group li.is-done {
+  color: #cbd5e1;
+}
+
+.milestone-report-group li.is-done svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: #10b981;
+}
+
+.milestone-report-open-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border: 1.5px solid #64748b;
+  border-radius: 999px;
+}
+
+.milestone-report-open-status {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.milestone-report-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid rgba(51, 65, 85, 0.45);
+  background: #0e1319;
+  padding: 16px 28px;
+}
+
+.milestone-report-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.milestone-report-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 1px solid #2b3743;
+  border-radius: 12px;
+  background: transparent;
+  color: #cbd5e1;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 620;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.milestone-report-action:hover {
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.milestone-report-action.is-copied {
+  border-color: rgba(16, 185, 129, 0.6);
+  color: #6ee7b7;
+}
+
+.milestone-report-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.milestone-report-done {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: #1d70e8;
+  color: #fff;
+  padding: 0 24px;
+  font-size: 14px;
+  font-weight: 680;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.milestone-report-done:hover {
+  background: #1a63cf;
+}
+
+.milestone-report :focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
 }
 
 .milestone-toolbar {
@@ -1920,6 +2330,75 @@ body {
   padding: 12px 16px 4px;
 }
 
+/* Owner picker — switch through the project team when Atlas asks "who owns it?". */
+.documentation-owner-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 16px 6px;
+}
+
+.documentation-owner-label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.documentation-owner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.55);
+  color: #cbd5e1;
+  padding: 5px 14px 5px 6px;
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.documentation-owner-chip:hover {
+  border-color: rgba(129, 140, 248, 0.6);
+  color: #fff;
+}
+
+.documentation-owner-chip.is-selected {
+  border-color: transparent;
+  background: rgba(99, 102, 241, 0.28);
+  color: #fff;
+}
+
+.documentation-owner-avatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.documentation-owner-chip svg {
+  width: 15px;
+  height: 15px;
+}
+
+.documentation-summary-tag.tag-owner {
+  background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
+}
+
 .documentation-captured-label {
   color: #64748b;
   font-size: 10px;
@@ -2083,6 +2562,63 @@ body {
 .documentation-summary-tag.tag-risk {
   background: rgba(245, 158, 11, 0.22);
   color: #fcd34d;
+}
+
+/* Pick which milestone the logged update attaches to (becomes tasks on it). */
+.documentation-attach-picker {
+  margin-bottom: 16px;
+}
+
+.documentation-attach-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #c7d2fe;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.documentation-attach-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.documentation-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.5);
+  color: #cbd5e1;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 560;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.documentation-attach-chip:hover {
+  border-color: rgba(129, 140, 248, 0.6);
+  color: #fff;
+}
+
+.documentation-attach-chip.is-selected {
+  border-color: transparent;
+  background: rgba(99, 102, 241, 0.3);
+  color: #fff;
+}
+
+.documentation-attach-chip svg {
+  width: 15px;
+  height: 15px;
 }
 
 .documentation-summary-confirm {

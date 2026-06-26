@@ -3,9 +3,12 @@ import {
   Bell,
   Boxes,
   Check,
+  ChevronDown,
   CircleHelp,
   Command,
+  Download,
   FilePenLine,
+  FileText,
   LogOut,
   MessageSquareText,
   Mic,
@@ -21,17 +24,36 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { Dispatch, FormEvent, KeyboardEvent as ReactKeyboardEvent, SetStateAction } from "react";
+import {
+  documentFileStamp,
+  downloadHtmlAsDoc,
+  escapeHtml,
+  printHtmlAsPdf,
+  wrapHtmlDocument,
+} from "./documentExport";
 import { MilestonesSection } from "./MilestonesSection";
-import { milestoneProjectTabs, projectTabs, sidebarItems, tacDashboardData } from "./tacData";
+import { milestoneProjectTabs, projectTabs, sidebarItems, tacDashboardData, teamMembers } from "./tacData";
 import type {
   BusinessOutcomeColumn,
   DeliveryMomentumItem,
+  MilestoneItem,
+  MilestoneTask,
   NavItem,
   OperationalAttentionItem,
   ProjectTab,
   TacDashboardData,
+  TaskPriority,
+  TaskStatus,
 } from "./types";
+
+// A documentation update logged from the chat, kept at the project level so the
+// downloadable document always reflects everyone's latest updates.
+type ProjectUpdate = {
+  id: number;
+  loggedAt: string;
+  entries: { label: string; text: string }[];
+};
 
 type TacDashboardProps = {
   data?: TacDashboardData;
@@ -68,7 +90,7 @@ const defaultQuestionSets: IntakeQuestionSet[] = [
 ];
 
 // The assistant has an identity so the conversation feels like someone, not a form.
-const assistantName = "Ada";
+const assistantName = "Atlas";
 const userFirstName = "Jordan";
 
 // Continuity: what the user said last time, so the opener can pick up the thread.
@@ -88,6 +110,13 @@ const capturedLabels: { key: CapturedCategory; label: string }[] = [
   { key: "blocker", label: "Blocker" },
   { key: "risk", label: "Risk" },
 ];
+
+// How each captured category becomes a milestone task when attached.
+const categoryToTask: Record<CapturedCategory, { type: string; priority: TaskPriority; status: TaskStatus }> = {
+  progress: { type: "Report", priority: "Medium", status: "Done" },
+  blocker: { type: "Blocker", priority: "High", status: "In progress" },
+  risk: { type: "Risk", priority: "Medium", status: "To do" },
+};
 
 function timeGreeting(): string {
   const hour = new Date().getHours();
@@ -141,6 +170,59 @@ export function TacDashboard({
 }: TacDashboardProps) {
   const [activeView, setActiveView] = useState<DashboardView>(view);
   const [documentationChatOpen, setDocumentationChatOpen] = useState(false);
+  // Single source of truth: milestone edits and logged updates live here so every
+  // surface — the milestone report and the header document download — stays in sync.
+  const [milestones, setMilestones] = useState<MilestoneItem[]>(data.milestones.items);
+  const [projectUpdates, setProjectUpdates] = useState<ProjectUpdate[]>([]);
+
+  // Attach a logged update to a milestone as real tasks (typed by captured category).
+  function handleAttachUpdate(
+    milestoneId: string,
+    items: { category: CapturedCategory; text: string }[],
+    ownerName: string,
+  ) {
+    if (items.length === 0) {
+      return;
+    }
+    const stamp = Date.now();
+    setMilestones((current) =>
+      current.map((milestone) => {
+        if (milestone.id !== milestoneId) {
+          return milestone;
+        }
+        const newTasks: MilestoneTask[] = items.map((item, index) => ({
+          id: `${milestone.id}-update-${stamp}-${index}`,
+          title: item.text,
+          type: categoryToTask[item.category].type,
+          priority: categoryToTask[item.category].priority,
+          status: categoryToTask[item.category].status,
+          owner: ownerName || "Unassigned",
+          ownerAvatar: ownerName ? "person" : "unknown",
+          dueDate: "TBD",
+        }));
+        return { ...milestone, tasks: [...milestone.tasks, ...newTasks] };
+      }),
+    );
+  }
+
+  function handleLogUpdate(entries: { label: string; text: string }[]) {
+    if (entries.length === 0) {
+      return;
+    }
+    setProjectUpdates((current) => [
+      ...current,
+      {
+        id: Date.now(),
+        loggedAt: new Date().toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        entries,
+      },
+    ]);
+  }
   const resolvedTabs = useMemo(() => {
     const baseTabs = tabs ?? (activeView === "milestones" ? milestoneProjectTabs : projectTabs);
     return baseTabs.map((tab) => ({
@@ -183,14 +265,14 @@ export function TacDashboard({
     <div className="tac-shell">
       <Sidebar items={navItems} />
       <main className="tac-workspace">
-        <ProjectHeader organization={data.organization} project={data.project} />
+        <ProjectHeader data={data} milestones={milestones} projectUpdates={projectUpdates} />
         <ProjectTabs tabs={resolvedTabs} onTabSelect={setActiveView} />
         <section
           className={activeView === "milestones" ? "tac-page tac-page-milestones" : "tac-page"}
           aria-labelledby={activeView === "milestones" ? "milestones-title" : "overview-title"}
         >
           {activeView === "milestones" ? (
-            <MilestonesSection data={data.milestones} />
+            <MilestonesSection data={data.milestones} milestones={milestones} setMilestones={setMilestones} />
           ) : (
             <>
               <div className="overview-heading-row">
@@ -202,7 +284,7 @@ export function TacDashboard({
                   onClick={() => setDocumentationChatOpen((current) => !current)}
                 >
                   <FilePenLine aria-hidden="true" />
-                  <span>Update project documentation</span>
+                  <span>Share a project update</span>
                 </button>
               </div>
 
@@ -226,7 +308,12 @@ export function TacDashboard({
               />
 
               {documentationChatOpen ? (
-                <DocumentationChatWindow onClose={() => setDocumentationChatOpen(false)} />
+                <DocumentationChatWindow
+                  milestones={milestones}
+                  onClose={() => setDocumentationChatOpen(false)}
+                  onLogUpdate={handleLogUpdate}
+                  onAttachUpdate={handleAttachUpdate}
+                />
               ) : null}
             </>
           )}
@@ -239,7 +326,21 @@ export function TacDashboard({
   );
 }
 
-function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
+function DocumentationChatWindow({
+  milestones,
+  onClose,
+  onLogUpdate,
+  onAttachUpdate,
+}: {
+  milestones: MilestoneItem[];
+  onClose: () => void;
+  onLogUpdate: (entries: { label: string; text: string }[]) => void;
+  onAttachUpdate: (
+    milestoneId: string,
+    items: { category: CapturedCategory; text: string }[],
+    ownerName: string,
+  ) => void;
+}) {
   const [messages, setMessages] = useState<DocumentationChatMessage[]>(() => [
     {
       id: 1,
@@ -255,6 +356,8 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isAssistantTyping, setIsAssistantTyping] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -277,6 +380,9 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
   }, [userMessages]);
 
   const showSummary = userTurnCount >= 3;
+  // Once Atlas asks "who owns it?" (after the 2nd reply), offer the team roster to pick an owner.
+  const showOwnerPicker = userTurnCount >= 2 && !isLogged;
+  const selectedOwner = teamMembers.find((member) => member.id === selectedOwnerId) ?? null;
 
   function handleStarter(seed: string) {
     setInputValue(seed);
@@ -286,6 +392,24 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
         composer.focus();
         composer.setSelectionRange(seed.length, seed.length);
       }
+    });
+  }
+
+  // Voice input (prototype): stopping the recording drops a simulated transcript into the
+  // composer so the voice path flows to "User submits" like the other input modes.
+  function handleToggleVoice() {
+    setIsRecording((current) => {
+      const next = !current;
+      if (!next) {
+        const transcript =
+          "Since the last update, we've cleared the API migration blocker and the Day 30 gate is back on track.";
+        setInputValue((value) => value.trim() || transcript);
+        requestAnimationFrame(() => {
+          const composer = composerRef.current;
+          composer?.focus();
+        });
+      }
+      return next;
     });
   }
 
@@ -407,12 +531,36 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
       timestamp: getTimestamp(),
     };
     setMessages((current) => [...current, userMessage]);
-    sendAssistantReply("Easy — I'll note steady state and keep the existing docs as-is. Have a good one.");
+    // "All quiet" still logs an update — it records a steady-state check-in.
+    onLogUpdate([{ label: "Status", text: "All quiet — no material changes since the last update." }]);
+    setIsLogged(true);
+    sendAssistantReply("Easy — I logged a steady-state check-in and kept the existing docs as-is. Have a good one.");
   }
 
   function handleConfirmSummary() {
+    const items = capturedLabels
+      .filter(({ key }) => captured[key])
+      .map(({ key }) => ({ category: key, text: captured[key] as string }));
+
+    const entries = capturedLabels
+      .filter(({ key }) => captured[key])
+      .map(({ key, label }) => ({ label, text: captured[key] as string }));
+    if (selectedOwner) {
+      entries.push({ label: "Owner", text: selectedOwner.name });
+    }
+    onLogUpdate(entries);
+
+    const targetMilestone = milestones.find((milestone) => milestone.id === selectedMilestoneId);
+    if (targetMilestone) {
+      onAttachUpdate(targetMilestone.id, items, selectedOwner?.name ?? "");
+    }
+
     setIsLogged(true);
-    sendAssistantReply("Logged. The Overview reflects this now — thanks for keeping it current.");
+    sendAssistantReply(
+      targetMilestone
+        ? `Logged — and I added ${items.length} item${items.length === 1 ? "" : "s"} to “${targetMilestone.title}”. Thanks for keeping it current.`
+        : "Logged. The Overview reflects this now — thanks for keeping it current.",
+    );
   }
 
   function handleComposerKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
@@ -585,10 +733,40 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
                             </li>
                           ) : null,
                         )}
+                        {selectedOwner ? (
+                          <li>
+                            <span className="documentation-summary-tag tag-owner">Owner</span>
+                            <p>{selectedOwner.name}</p>
+                          </li>
+                        ) : null}
                       </ul>
+
+                      <div className="documentation-attach-picker">
+                        <span className="documentation-attach-label">Attach to milestone</span>
+                        <div className="documentation-attach-options">
+                          {milestones.map((milestone) => {
+                            const isSelected = milestone.id === selectedMilestoneId;
+                            return (
+                              <button
+                                key={milestone.id}
+                                className={isSelected ? "documentation-attach-chip is-selected" : "documentation-attach-chip"}
+                                type="button"
+                                aria-pressed={isSelected}
+                                onClick={() =>
+                                  setSelectedMilestoneId((current) => (current === milestone.id ? null : milestone.id))
+                                }
+                              >
+                                {milestone.title}
+                                {isSelected ? <Check aria-hidden="true" /> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                       <button className="documentation-summary-confirm" type="button" onClick={handleConfirmSummary}>
                         <Check aria-hidden="true" />
-                        <span>Looks good — log it</span>
+                        <span>{selectedMilestoneId ? "Log it & add to milestone" : "Looks good — log it"}</span>
                       </button>
                     </>
                   )}
@@ -614,6 +792,29 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
                 </span>
               ))}
             </div>
+            {showOwnerPicker ? (
+              <div className="documentation-owner-picker" aria-label="Assign an owner">
+                <span className="documentation-owner-label">Owner</span>
+                {teamMembers.map((member) => {
+                  const isSelected = member.id === selectedOwnerId;
+                  return (
+                    <button
+                      key={member.id}
+                      className={isSelected ? "documentation-owner-chip is-selected" : "documentation-owner-chip"}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedOwnerId((current) => (current === member.id ? null : member.id))}
+                    >
+                      <span className="documentation-owner-avatar" aria-hidden="true">
+                        {member.name.charAt(0)}
+                      </span>
+                      {member.name}
+                      {isSelected ? <Check aria-hidden="true" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             {!hasUserReplied ? (
               <div className="documentation-chat-starters" aria-label="Quick ways to start">
                 {conversationStarters.map((starter) => (
@@ -653,7 +854,7 @@ function DocumentationChatWindow({ onClose }: { onClose: () => void }) {
                 aria-label={isRecording ? "Stop voice recording" : "Record with voice"}
                 aria-pressed={isRecording}
                 title={isRecording ? "Stop recording" : "Voice"}
-                onClick={() => setIsRecording((current) => !current)}
+                onClick={handleToggleVoice}
               >
                 <Mic aria-hidden="true" />
               </button>
@@ -793,19 +994,191 @@ function Sidebar({ items }: { items: NavItem[] }) {
   );
 }
 
-function ProjectHeader({ organization, project }: { organization: string; project: string }) {
+// The project "operating document" — a single artifact rolling up the live dashboard
+// state: current milestones plus every documentation update logged by the team.
+function buildProjectDocumentHtml(
+  data: TacDashboardData,
+  milestones: MilestoneItem[],
+  projectUpdates: ProjectUpdate[],
+): string {
+  const generatedOn = new Date().toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+
+  const updatesHtml = projectUpdates
+    .map((update) => {
+      const lines = update.entries
+        .map((entry) => `<li><strong>${escapeHtml(entry.label)}:</strong> ${escapeHtml(entry.text)}</li>`)
+        .join("");
+      return `
+        <div class="entry">
+          <p class="meta">Logged ${escapeHtml(update.loggedAt)}</p>
+          <ul>${lines}</ul>
+        </div>`;
+    })
+    .join("");
+
+  const attentionHtml = data.operational.items
+    .map(
+      (item) =>
+        `<li>${escapeHtml(item.title)} — ${escapeHtml(item.detail)}${item.badge ? ` <em>(${escapeHtml(item.badge)})</em>` : ""}</li>`,
+    )
+    .join("");
+
+  const momentumHtml = data.momentum
+    .map((item) => `<li><strong>${escapeHtml(item.value)}</strong> — ${escapeHtml(item.label)}: ${escapeHtml(item.detail)}</li>`)
+    .join("");
+
+  const outcomeHtml = data.businessOutcome.columns
+    .map((column) => `<h3>${escapeHtml(column.eyebrow)}</h3><p class="meta">${escapeHtml(column.body)}</p>`)
+    .join("");
+
+  const milestonesHtml = milestones
+    .map((milestone) => {
+      const doneCount = milestone.tasks.filter((task) => task.status === "Done").length;
+      return `
+        <div class="entry">
+          <div class="entry-head">
+            <h2>${escapeHtml(milestone.title)}</h2>
+            <span class="pill">${escapeHtml(milestone.status)}</span>
+          </div>
+          <p class="meta">${escapeHtml(milestone.progressLabel)} &middot; ${escapeHtml(milestone.owner)} &middot; Due ${escapeHtml(milestone.dueDate)} &middot; ${doneCount}/${milestone.tasks.length} tasks done</p>
+        </div>`;
+    })
+    .join("");
+
+  const body = `
+  <h1>${escapeHtml(data.project)} — Operating Document</h1>
+  <p class="generated">Generated ${escapeHtml(generatedOn)} &middot; ${escapeHtml(data.organization)}</p>
+  <div class="summary">
+    <div><strong>${data.healthScore}%</strong><span>Delivery health</span></div>
+    <div><strong>${milestones.length}</strong><span>Milestones</span></div>
+    <div><strong>${projectUpdates.length}</strong><span>Updates logged</span></div>
+  </div>
+  <div class="section">
+    <h2>Documentation updates (${projectUpdates.length})</h2>
+    ${updatesHtml || "<p>No updates logged yet.</p>"}
+  </div>
+  <div class="section">
+    <h2>Delivery health</h2>
+    <p class="meta">${escapeHtml(data.healthStatus)} &middot; 7-day trend ${escapeHtml(data.healthDates.join(" → "))}</p>
+  </div>
+  <div class="section">
+    <h2>Operational attention</h2>
+    <p class="meta">Blockers: ${escapeHtml(data.operational.blockerStatus)}</p>
+    <ul>${attentionHtml || "<li>None.</li>"}</ul>
+  </div>
+  <div class="section">
+    <h2>Delivery momentum</h2>
+    <ul>${momentumHtml || "<li>None.</li>"}</ul>
+  </div>
+  <div class="section">
+    <h2>Business outcome — ${escapeHtml(data.businessOutcome.title)}</h2>
+    <p class="meta">${escapeHtml(data.businessOutcome.prompt)}</p>
+    ${outcomeHtml}
+  </div>
+  <div class="section">
+    <h2>Milestones (${milestones.length})</h2>
+    ${milestonesHtml || "<p>No milestones yet.</p>"}
+  </div>`;
+
+  return wrapHtmlDocument(`${data.project} — Operating Document`, body);
+}
+
+function projectFileSlug(project: string): string {
+  const slug = project.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return slug || "project";
+}
+
+function ProjectHeader({
+  data,
+  milestones,
+  projectUpdates,
+}: {
+  data: TacDashboardData;
+  milestones: MilestoneItem[];
+  projectUpdates: ProjectUpdate[];
+}) {
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!downloadMenuOpen) {
+      return undefined;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (event.target instanceof Element && event.target.closest("[data-download-menu-root]")) {
+        return;
+      }
+      setDownloadMenuOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setDownloadMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [downloadMenuOpen]);
+
+  function handleDownloadDoc() {
+    downloadHtmlAsDoc(
+      buildProjectDocumentHtml(data, milestones, projectUpdates),
+      `${projectFileSlug(data.project)}-operating-document-${documentFileStamp()}.doc`,
+    );
+    setDownloadMenuOpen(false);
+  }
+
+  function handleDownloadPdf() {
+    printHtmlAsPdf(buildProjectDocumentHtml(data, milestones, projectUpdates));
+    setDownloadMenuOpen(false);
+  }
+
   return (
     <header className="project-header">
       <div className="breadcrumb">
         <button className="back-button" type="button" aria-label="Back" title="Back">
           <ArrowLeft aria-hidden="true" />
         </button>
-        <span className="breadcrumb-strong">{organization}</span>
+        <span className="breadcrumb-strong">{data.organization}</span>
         <span className="breadcrumb-divider">/</span>
-        <span className="breadcrumb-project">{project}</span>
+        <span className="breadcrumb-project">{data.project}</span>
       </div>
 
       <div className="header-actions">
+        <div className="download-control" data-download-menu-root>
+          <button
+            className="download-button"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={downloadMenuOpen}
+            onClick={() => setDownloadMenuOpen((current) => !current)}
+          >
+            <Download aria-hidden="true" />
+            <span>Download</span>
+            <ChevronDown aria-hidden="true" />
+          </button>
+          {downloadMenuOpen ? (
+            <div className="download-menu" role="menu" aria-label="Download project document">
+              <button className="download-menu-item" type="button" role="menuitem" onClick={handleDownloadDoc}>
+                <FileText aria-hidden="true" />
+                <span>Word (.doc)</span>
+              </button>
+              <button className="download-menu-item" type="button" role="menuitem" onClick={handleDownloadPdf}>
+                <Download aria-hidden="true" />
+                <span>PDF</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
         <button className="edit-button" type="button">
           <PencilLine aria-hidden="true" />
           <span>Edit</span>

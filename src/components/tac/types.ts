@@ -33,6 +33,12 @@ export type BusinessOutcomeColumn = {
   body: string;
 };
 
+export type TeamMember = {
+  id: string;
+  name: string;
+  avatar: "person";
+};
+
 export type MilestoneStatus = "Completed" | "In progress" | "Not started";
 
 export type TaskStatus = "To do" | "In progress" | "Done";
