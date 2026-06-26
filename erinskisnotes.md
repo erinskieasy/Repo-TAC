@@ -11,7 +11,7 @@ Running summary of product/interface changes made in this repo.
 - Milestone rows now reveal a trash button near the row actions for deleting the milestone.
 - Edit and delete controls stop row click propagation, so using them does not expand or collapse milestones.
 - Added clickable assignee cells for milestones and tasks.
-- Assignee cells open a staff dropdown with Tiffany Tomblin, Erinski Easy, and Mikale Meetoo, supporting multiple assignees and grouped labels.
+- Assignee cells open a staff dropdown with Tiffany Tomlin, Erinski Easy, and Mikale Meetoo, supporting multiple assignees and grouped labels.
 - Added clickable due date cells for milestones and tasks, opening a native date picker and updating the displayed due date.
 - Added clickable status controls for milestones and tasks.
 - Milestone statuses can be changed between Completed, In progress, and Not started.
@@ -29,3 +29,10 @@ Running summary of product/interface changes made in this repo.
 - Added config behavior: saved question sets affect the simulated chat response without adding real LLM processing.
 - Added a hover-only trash action to each chat configuration question set for removing that question set.
 - Added a larger T.A.C Certified badge with a check mark beside the Overview page title.
+
+## 2026-06-26
+
+- The Overview page's Share a project update flow now uses the Atlas chat as the intake point for today's written check-in.
+- When Atlas logs an update, the same captured entries are also handed to today's reporting state as a filed report.
+- Atlas stores a report Summary from the user's chat messages, then keeps captured Progress, Blocker, Risk, and Owner fields as supporting report details.
+- The logged-state confirmation now tells the user that both Overview and Reporting reflect the update.

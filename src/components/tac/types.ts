@@ -75,6 +75,24 @@ export type MilestonesSectionData = {
   items: MilestoneItem[];
 };
 
+export type ReportingPerson = {
+  id: string;
+  name: string;
+  lastFiledAt: string;
+};
+
+export type ReportEntry = {
+  id: number;
+  reporterId?: string;
+  reporterName: string;
+  filedAt: string;
+  entries: { label: string; text: string }[];
+};
+
+export type ReportingSectionData = {
+  requiredToday: ReportingPerson[];
+};
+
 export type TacDashboardData = {
   organization: string;
   project: string;
@@ -96,4 +114,5 @@ export type TacDashboardData = {
     count: number;
   };
   milestones: MilestonesSectionData;
+  reporting: ReportingSectionData;
 };

@@ -9,6 +9,7 @@ import {
   Download,
   FilePenLine,
   FileText,
+  Maximize2,
   LogOut,
   MessageSquareText,
   Mic,
@@ -33,6 +34,7 @@ import {
   wrapHtmlDocument,
 } from "./documentExport";
 import { MilestonesSection } from "./MilestonesSection";
+import { ReportingSection } from "./ReportingSection";
 import { milestoneProjectTabs, projectTabs, sidebarItems, tacDashboardData, teamMembers } from "./tacData";
 import type {
   BusinessOutcomeColumn,
@@ -42,6 +44,7 @@ import type {
   NavItem,
   OperationalAttentionItem,
   ProjectTab,
+  ReportEntry,
   TacDashboardData,
   TaskPriority,
   TaskStatus,
@@ -59,10 +62,10 @@ type TacDashboardProps = {
   data?: TacDashboardData;
   tabs?: ProjectTab[];
   navItems?: NavItem[];
-  view?: "overview" | "milestones";
+  view?: DashboardView;
 };
 
-type DashboardView = "overview" | "milestones";
+type DashboardView = "overview" | "milestones" | "reporting";
 
 type DocumentationChatMessage = {
   id: number;
@@ -158,6 +161,37 @@ function buildAssistantReply(userText: string, userTurnNumber: number): string {
   return `${thorough}That's a solid check-in. Here's what I pulled together — look right?`;
 }
 
+function findReporterFromEntries(entries: { label: string; text: string }[]) {
+  const ownerEntry = entries.find((entry) => entry.label === "Owner");
+  if (!ownerEntry) {
+    return { id: "current-user", name: userFirstName };
+  }
+
+  const ownerName = ownerEntry.text.toLowerCase();
+  const matchedMember = teamMembers.find((member) => member.name.toLowerCase() === ownerName);
+  return matchedMember ? { id: matchedMember.id, name: matchedMember.name } : { name: ownerEntry.text };
+}
+
+function getLatestAtlasNote(projectUpdates: ProjectUpdate[]): string {
+  const latestUpdate = projectUpdates.at(-1);
+  if (!latestUpdate) {
+    return "keeping your project docs current";
+  }
+
+  const preferredLabels = ["Blocker", "Risk", "Progress"];
+  const latestEntry =
+    preferredLabels
+      .map((label) => latestUpdate.entries.find((entry) => entry.label === label))
+      .find(Boolean) ?? latestUpdate.entries[0];
+
+  if (!latestEntry) {
+    return "keeping your project docs current";
+  }
+
+  const shortText = latestEntry.text.length > 92 ? `${latestEntry.text.slice(0, 89).trim()}...` : latestEntry.text;
+  return `latest note: ${shortText}`;
+}
+
 export function TacDashboardPreview() {
   return <TacDashboard />;
 }
@@ -170,10 +204,12 @@ export function TacDashboard({
 }: TacDashboardProps) {
   const [activeView, setActiveView] = useState<DashboardView>(view);
   const [documentationChatOpen, setDocumentationChatOpen] = useState(false);
+  const [operatingDocumentOpen, setOperatingDocumentOpen] = useState(false);
   // Single source of truth: milestone edits and logged updates live here so every
   // surface — the milestone report and the header document download — stays in sync.
   const [milestones, setMilestones] = useState<MilestoneItem[]>(data.milestones.items);
   const [projectUpdates, setProjectUpdates] = useState<ProjectUpdate[]>([]);
+  const [reports, setReports] = useState<ReportEntry[]>([]);
 
   // Attach a logged update to a milestone as real tasks (typed by captured category).
   function handleAttachUpdate(
@@ -209,27 +245,47 @@ export function TacDashboard({
     if (entries.length === 0) {
       return;
     }
+    const id = Date.now();
+    const loggedAt = new Date().toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const reporter = findReporterFromEntries(entries);
     setProjectUpdates((current) => [
       ...current,
       {
-        id: Date.now(),
-        loggedAt: new Date().toLocaleString(undefined, {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
+        id,
+        loggedAt,
+        entries,
+      },
+    ]);
+    setReports((current) => [
+      ...current,
+      {
+        id,
+        reporterId: reporter.id,
+        reporterName: reporter.name,
+        filedAt: loggedAt,
         entries,
       },
     ]);
   }
+
+  const latestAtlasNote = useMemo(() => getLatestAtlasNote(projectUpdates), [projectUpdates]);
+  const operatingDocumentHtml = useMemo(
+    () => buildProjectDocumentHtml(data, milestones, projectUpdates),
+    [data, milestones, projectUpdates],
+  );
   const resolvedTabs = useMemo(() => {
     const baseTabs = tabs ?? (activeView === "milestones" ? milestoneProjectTabs : projectTabs);
     return baseTabs.map((tab) => ({
       ...tab,
       active:
         (activeView === "overview" && tab.label === "Overview") ||
-        (activeView === "milestones" && tab.label === "Milestones"),
+        (activeView === "milestones" && tab.label === "Milestones") ||
+        (activeView === "reporting" && tab.label === "Reporting"),
     }));
   }, [activeView, tabs]);
 
@@ -268,11 +324,29 @@ export function TacDashboard({
         <ProjectHeader data={data} milestones={milestones} projectUpdates={projectUpdates} />
         <ProjectTabs tabs={resolvedTabs} onTabSelect={setActiveView} />
         <section
-          className={activeView === "milestones" ? "tac-page tac-page-milestones" : "tac-page"}
-          aria-labelledby={activeView === "milestones" ? "milestones-title" : "overview-title"}
+          className={
+            activeView === "milestones"
+              ? "tac-page tac-page-milestones"
+              : activeView === "reporting"
+                ? "tac-page tac-page-reporting"
+                : "tac-page"
+          }
+          aria-labelledby={
+            activeView === "milestones"
+              ? "milestones-title"
+              : activeView === "reporting"
+                ? "reporting-title"
+                : "overview-title"
+          }
         >
           {activeView === "milestones" ? (
             <MilestonesSection data={data.milestones} milestones={milestones} setMilestones={setMilestones} />
+          ) : activeView === "reporting" ? (
+            <ReportingSection
+              data={data.reporting}
+              reports={reports}
+              onAddReport={() => setDocumentationChatOpen(true)}
+            />
           ) : (
             <>
               <div className="overview-heading-row">
@@ -316,15 +390,30 @@ export function TacDashboard({
               {documentationChatOpen ? (
                 <DocumentationChatWindow
                   milestones={milestones}
+                  latestAtlasNote={latestAtlasNote}
                   onClose={() => setDocumentationChatOpen(false)}
                   onLogUpdate={handleLogUpdate}
                   onAttachUpdate={handleAttachUpdate}
+                  onOpenOperatingDocument={() => setOperatingDocumentOpen(true)}
                 />
               ) : null}
             </>
           )}
         </section>
       </main>
+      {operatingDocumentOpen ? (
+        <OperatingDocumentPreview
+          html={operatingDocumentHtml}
+          onClose={() => setOperatingDocumentOpen(false)}
+          onDownloadDoc={() =>
+            downloadHtmlAsDoc(
+              operatingDocumentHtml,
+              `${projectFileSlug(data.project)}-operating-document-${documentFileStamp()}.doc`,
+            )
+          }
+          onDownloadPdf={() => printHtmlAsPdf(operatingDocumentHtml)}
+        />
+      ) : null}
       <button className="assistant-launcher" type="button" aria-label="Open assistant" title="Open assistant">
         <Sparkles aria-hidden="true" />
       </button>
@@ -334,11 +423,14 @@ export function TacDashboard({
 
 function DocumentationChatWindow({
   milestones,
+  latestAtlasNote,
   onClose,
   onLogUpdate,
   onAttachUpdate,
+  onOpenOperatingDocument,
 }: {
   milestones: MilestoneItem[];
+  latestAtlasNote: string;
   onClose: () => void;
   onLogUpdate: (entries: { label: string; text: string }[]) => void;
   onAttachUpdate: (
@@ -346,6 +438,7 @@ function DocumentationChatWindow({
     items: { category: CapturedCategory; text: string }[],
     ownerName: string,
   ) => void;
+  onOpenOperatingDocument: () => void;
 }) {
   const [messages, setMessages] = useState<DocumentationChatMessage[]>(() => [
     {
@@ -548,9 +641,20 @@ function DocumentationChatWindow({
       .filter(({ key }) => captured[key])
       .map(({ key }) => ({ category: key, text: captured[key] as string }));
 
-    const entries = capturedLabels
+    const summaryText = userMessages
+      .map((message) => message.text.trim())
+      .filter(Boolean)
+      .join(" ");
+
+    const capturedEntries = capturedLabels
       .filter(({ key }) => captured[key])
       .map(({ key, label }) => ({ label, text: captured[key] as string }));
+
+    const entries =
+      capturedEntries.length > 0
+        ? [{ label: "Summary", text: summaryText }, ...capturedEntries]
+        : [{ label: "Summary", text: summaryText || "Report filed for today's check-in." }];
+
     if (selectedOwner) {
       entries.push({ label: "Owner", text: selectedOwner.name });
     }
@@ -565,7 +669,7 @@ function DocumentationChatWindow({
     sendAssistantReply(
       targetMilestone
         ? `Logged — and I added ${items.length} item${items.length === 1 ? "" : "s"} to “${targetMilestone.title}”. Thanks for keeping it current.`
-        : "Logged. The Overview reflects this now — thanks for keeping it current.",
+        : "Logged. The Overview and Reporting reflect this now — thanks for keeping it current.",
     );
   }
 
@@ -674,12 +778,18 @@ function DocumentationChatWindow({
             </div>
           ) : (
             <div className="documentation-chat-stream">
-              <div className="documentation-context-bubble">
+              <button
+                className="documentation-context-bubble"
+                type="button"
+                onClick={onOpenOperatingDocument}
+                aria-label="Open operating document preview"
+              >
                 <span>
                   <MessageSquareText aria-hidden="true" />
                 </span>
-                <strong>{assistantName} · keeping your project docs current</strong>
-              </div>
+                <strong>{assistantName} · {latestAtlasNote}</strong>
+                <Maximize2 aria-hidden="true" />
+              </button>
 
               <div className="documentation-chat-day-divider">
                 <span />
@@ -725,7 +835,7 @@ function DocumentationChatWindow({
                         <Check aria-hidden="true" />
                       </span>
                       <strong>Update logged</strong>
-                      <span>The Overview reflects this now.</span>
+                      <span>The Overview and Reporting reflect this now.</span>
                     </div>
                   ) : (
                     <>
@@ -1093,6 +1203,63 @@ function buildProjectDocumentHtml(
   return wrapHtmlDocument(`${data.project} — Operating Document`, body);
 }
 
+function OperatingDocumentPreview({
+  html,
+  onClose,
+  onDownloadDoc,
+  onDownloadPdf,
+}: {
+  html: string;
+  onClose: () => void;
+  onDownloadDoc: () => void;
+  onDownloadPdf: () => void;
+}) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="operating-document-layer" role="presentation">
+      <button
+        className="operating-document-backdrop"
+        type="button"
+        tabIndex={-1}
+        aria-label="Close operating document preview"
+        onClick={onClose}
+      />
+      <section className="operating-document-preview" role="dialog" aria-modal="true" aria-label="Operating document preview">
+        <header className="operating-document-header">
+          <div>
+            <span>Operating document</span>
+            <strong>Live project record</strong>
+          </div>
+          <div className="operating-document-actions">
+            <button type="button" onClick={onDownloadDoc}>
+              <FileText aria-hidden="true" />
+              <span>Word</span>
+            </button>
+            <button type="button" onClick={onDownloadPdf}>
+              <Download aria-hidden="true" />
+              <span>PDF</span>
+            </button>
+            <button className="operating-document-close" type="button" aria-label="Close" title="Close" onClick={onClose}>
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+        <iframe className="operating-document-frame" title="Operating document preview" srcDoc={html} />
+      </section>
+    </div>
+  );
+}
+
 function projectFileSlug(project: string): string {
   const slug = project.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   return slug || "project";
@@ -1247,7 +1414,14 @@ function ProjectTabButton({
   tab: ProjectTab;
   onTabSelect: (view: DashboardView) => void;
 }) {
-  const mappedView = tab.label === "Overview" ? "overview" : tab.label === "Milestones" ? "milestones" : null;
+  const mappedView =
+    tab.label === "Overview"
+      ? "overview"
+      : tab.label === "Milestones"
+        ? "milestones"
+        : tab.label === "Reporting"
+          ? "reporting"
+          : null;
 
   return (
     <button

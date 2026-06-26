@@ -15,7 +15,7 @@ import type { MilestonesSectionData, NavItem, ProjectTab, TacDashboardData, Team
 
 // The project team roster — shared by the milestones assignee picker and the Atlas owner picker.
 export const teamMembers: TeamMember[] = [
-  { id: "tiffany", name: "Tiffany Tomblin", avatar: "person" },
+  { id: "tiffany", name: "Tiffany Tomlin", avatar: "person" },
   { id: "erinski", name: "Erinski Easy", avatar: "person" },
   { id: "mikale", name: "Mikale Meetoo", avatar: "person" },
 ];
@@ -271,4 +271,10 @@ export const tacDashboardData: TacDashboardData = {
     count: 9,
   },
   milestones: tacMilestones,
+  reporting: {
+    requiredToday: [
+      { id: "erinski", name: "Erinski Easy", lastFiledAt: "Jun 23 at 18:22" },
+      { id: "tiffany", name: "Tiffany Tomlin", lastFiledAt: "Jun 23 at 13:53" },
+    ],
+  },
 };
