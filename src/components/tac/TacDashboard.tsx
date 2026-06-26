@@ -1234,13 +1234,23 @@ function OperatingDocumentPreview({
         aria-label="Close operating document preview"
         onClick={onClose}
       />
-      <section className="operating-document-preview" role="dialog" aria-modal="true" aria-label="Operating document preview">
+      <section
+        className="operating-document-preview"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Operating document preview"
+        data-documentation-chat-root
+      >
         <header className="operating-document-header">
           <div>
             <span>Operating document</span>
             <strong>Live project record</strong>
           </div>
           <div className="operating-document-actions">
+            <button className="operating-document-back-button" type="button" onClick={onClose}>
+              <MessageSquareText aria-hidden="true" />
+              <span>Back to chat</span>
+            </button>
             <button type="button" onClick={onDownloadDoc}>
               <FileText aria-hidden="true" />
               <span>Word</span>

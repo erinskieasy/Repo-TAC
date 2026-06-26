@@ -36,3 +36,6 @@ Running summary of product/interface changes made in this repo.
 - When Atlas logs an update, the same captured entries are also handed to today's reporting state as a filed report.
 - Atlas stores a report Summary from the user's chat messages, then keeps captured Progress, Blocker, Risk, and Owner fields as supporting report details.
 - The logged-state confirmation now tells the user that both Overview and Reporting reflect the update.
+- The Atlas context strip in the chat is now clickable and opens a TAC operating document preview using the same generated document content as the Word/PDF export.
+- The Atlas strip now surfaces the latest logged note, prioritizing Blocker, then Risk, then Progress when summarizing the most recent update.
+- The TAC operating document preview includes Word/PDF actions plus a Back to chat button so users can close the preview and return to the Atlas conversation.
