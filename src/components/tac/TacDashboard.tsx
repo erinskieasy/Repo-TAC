@@ -194,7 +194,13 @@ export function TacDashboard({
           ) : (
             <>
               <div className="overview-heading-row">
-                <h1 id="overview-title">{data.pageTitle}</h1>
+                <div className="overview-title-group">
+                  <h1 id="overview-title">{data.pageTitle}</h1>
+                  <span className="tac-certified-badge overview-certified-badge">
+                    <Check aria-hidden="true" />
+                    <span>T.A.C Certified</span>
+                  </span>
+                </div>
                 <button
                   className="milestone-primary-action overview-doc-action"
                   type="button"

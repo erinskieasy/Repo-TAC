@@ -214,6 +214,31 @@ body {
   color: #eef3f8;
 }
 
+.tac-certified-badge {
+  display: inline-flex;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(77, 117, 180, 0.68);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(25, 39, 59, 0.88), rgba(9, 26, 45, 0.88));
+  box-shadow: inset 0 1px 0 rgba(238, 243, 248, 0.08);
+  color: #dceaff;
+  padding: 0 12px 0 10px;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.tac-certified-badge svg {
+  width: 15px;
+  height: 15px;
+  color: #72b8ff;
+  stroke-width: 2.8;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -452,6 +477,29 @@ body {
 
 .overview-heading-row h1 {
   margin: 0;
+}
+
+.overview-title-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 16px;
+}
+
+.overview-certified-badge {
+  height: 38px;
+  gap: 9px;
+  border-color: rgba(77, 117, 180, 0.78);
+  padding: 0 16px 0 13px;
+  font-size: 15px;
+  box-shadow:
+    inset 0 1px 0 rgba(238, 243, 248, 0.1),
+    0 10px 24px rgba(23, 137, 244, 0.08);
+}
+
+.overview-certified-badge svg {
+  width: 18px;
+  height: 18px;
 }
 
 .overview-doc-action {
@@ -2574,6 +2622,10 @@ body {
     width: 220px;
   }
 
+  .overview-certified-badge {
+    padding-right: 14px;
+  }
+
   .project-tabs {
     overflow-x: auto;
     gap: 18px;
@@ -2591,6 +2643,10 @@ body {
   .overview-heading-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .overview-title-group {
+    flex-wrap: wrap;
   }
 
   .documentation-chat-layer {
