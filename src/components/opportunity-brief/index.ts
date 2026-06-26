@@ -1,0 +1,1 @@
+export { OpportunityBriefWorkbench } from "./OpportunityBriefWorkbench";
