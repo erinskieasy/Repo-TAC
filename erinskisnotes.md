@@ -28,3 +28,4 @@ Running summary of product/interface changes made in this repo.
 - Intake configuration supports reusable question sets with target question, good-answer criteria, and example answer fields.
 - Added config behavior: saved question sets affect the simulated chat response without adding real LLM processing.
 - Added a hover-only trash action to each chat configuration question set for removing that question set.
+- Added a larger T.A.C Certified badge with a check mark beside the Overview page title.
