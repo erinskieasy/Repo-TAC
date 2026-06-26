@@ -33,6 +33,7 @@ import {
   wrapHtmlDocument,
 } from "./documentExport";
 import { MilestonesSection } from "./MilestonesSection";
+import { ProjectPulse } from "./ProjectPulse";
 import { milestoneProjectTabs, projectTabs, sidebarItems, tacDashboardData, teamMembers } from "./tacData";
 import type {
   BusinessOutcomeColumn,
@@ -60,9 +61,10 @@ type TacDashboardProps = {
   tabs?: ProjectTab[];
   navItems?: NavItem[];
   view?: "overview" | "milestones";
+  onNewProject?: () => void;
 };
 
-type DashboardView = "overview" | "milestones";
+type DashboardView = "overview" | "milestones" | "pulse";
 
 type DocumentationChatMessage = {
   id: number;
@@ -96,19 +98,21 @@ const userFirstName = "Jordan";
 // Continuity: what the user said last time, so the opener can pick up the thread.
 const lastUpdateSummary = { when: "Tuesday", flagged: "the API migration was blocked" };
 
-type CapturedCategory = "progress" | "blocker" | "risk";
+type CapturedCategory = "progress" | "blocker" | "risk" | "nextStep";
 
 // Warm conversation openers so the user never faces a blank box.
 const conversationStarters: { label: string; seed: string }[] = [
   { label: "Report progress", seed: "Since the last update, we've " },
   { label: "Share a blocker", seed: "We're blocked on " },
   { label: "Flag a risk", seed: "A risk I'm watching is " },
+  { label: "Plan next steps", seed: "Next, we'll " },
 ];
 
 const capturedLabels: { key: CapturedCategory; label: string }[] = [
   { key: "progress", label: "Progress" },
   { key: "blocker", label: "Blocker" },
   { key: "risk", label: "Risk" },
+  { key: "nextStep", label: "Next step" },
 ];
 
 // How each captured category becomes a milestone task when attached.
@@ -116,6 +120,7 @@ const categoryToTask: Record<CapturedCategory, { type: string; priority: TaskPri
   progress: { type: "Report", priority: "Medium", status: "Done" },
   blocker: { type: "Blocker", priority: "High", status: "In progress" },
   risk: { type: "Risk", priority: "Medium", status: "To do" },
+  nextStep: { type: "Task", priority: "Medium", status: "To do" },
 };
 
 function timeGreeting(): string {
@@ -135,6 +140,9 @@ function detectCategory(text: string): CapturedCategory | null {
   const value = text.toLowerCase();
   if (/(block|stuck|waiting on|held up|can't|cannot|stalled)/.test(value)) return "blocker";
   if (/(risk|concern|worried|might slip|could slip|fragile|exposure|danger)/.test(value)) return "risk";
+  if (/(next,|next step|next we|plan to|going to|upcoming|then we|we will|we'll|after that)/.test(value)) {
+    return "nextStep";
+  }
   if (/(done|shipped|finished|complete|progress|wrapped|launched|made|merged|since the last update|we've|we have)/.test(value)) {
     return "progress";
   }
@@ -167,6 +175,7 @@ export function TacDashboard({
   tabs,
   navItems = sidebarItems,
   view = "milestones",
+  onNewProject,
 }: TacDashboardProps) {
   const [activeView, setActiveView] = useState<DashboardView>(view);
   const [documentationChatOpen, setDocumentationChatOpen] = useState(false);
@@ -229,7 +238,8 @@ export function TacDashboard({
       ...tab,
       active:
         (activeView === "overview" && tab.label === "Overview") ||
-        (activeView === "milestones" && tab.label === "Milestones"),
+        (activeView === "milestones" && tab.label === "Milestones") ||
+        (activeView === "pulse" && tab.label === "Activity"),
     }));
   }, [activeView, tabs]);
 
@@ -265,14 +275,33 @@ export function TacDashboard({
     <div className="tac-shell">
       <Sidebar items={navItems} />
       <main className="tac-workspace">
-        <ProjectHeader data={data} milestones={milestones} projectUpdates={projectUpdates} />
+        <ProjectHeader
+          data={data}
+          milestones={milestones}
+          projectUpdates={projectUpdates}
+          onNewProject={onNewProject}
+        />
         <ProjectTabs tabs={resolvedTabs} onTabSelect={setActiveView} />
         <section
           className={activeView === "milestones" ? "tac-page tac-page-milestones" : "tac-page"}
-          aria-labelledby={activeView === "milestones" ? "milestones-title" : "overview-title"}
+          aria-label={activeView === "pulse" ? "Project pulse" : undefined}
+          aria-labelledby={
+            activeView === "milestones"
+              ? "milestones-title"
+              : activeView === "overview"
+                ? "overview-title"
+                : undefined
+          }
         >
           {activeView === "milestones" ? (
             <MilestonesSection data={data.milestones} milestones={milestones} setMilestones={setMilestones} />
+          ) : activeView === "pulse" ? (
+            <ProjectPulse
+              projectName={data.project}
+              projectUpdates={projectUpdates}
+              onConfirmSignal={handleLogUpdate}
+              onTellAtlas={() => setDocumentationChatOpen(true)}
+            />
           ) : (
             <>
               <div className="overview-heading-row">
@@ -306,19 +335,20 @@ export function TacDashboard({
                 prompt={data.businessOutcome.prompt}
                 columns={data.businessOutcome.columns}
               />
-
-              {documentationChatOpen ? (
-                <DocumentationChatWindow
-                  milestones={milestones}
-                  onClose={() => setDocumentationChatOpen(false)}
-                  onLogUpdate={handleLogUpdate}
-                  onAttachUpdate={handleAttachUpdate}
-                />
-              ) : null}
             </>
           )}
         </section>
       </main>
+
+      {documentationChatOpen ? (
+        <DocumentationChatWindow
+          milestones={milestones}
+          onClose={() => setDocumentationChatOpen(false)}
+          onLogUpdate={handleLogUpdate}
+          onAttachUpdate={handleAttachUpdate}
+        />
+      ) : null}
+
       <button className="assistant-launcher" type="button" aria-label="Open assistant" title="Open assistant">
         <Sparkles aria-hidden="true" />
       </button>
@@ -369,7 +399,12 @@ function DocumentationChatWindow({
 
   // Watch the documentation build in real time: which categories the user has covered.
   const captured = useMemo(() => {
-    const result: Record<CapturedCategory, string | null> = { progress: null, blocker: null, risk: null };
+    const result: Record<CapturedCategory, string | null> = {
+      progress: null,
+      blocker: null,
+      risk: null,
+      nextStep: null,
+    };
     for (const message of userMessages) {
       const category = detectCategory(message.text);
       if (category && !result[category]) {
@@ -1096,10 +1131,12 @@ function ProjectHeader({
   data,
   milestones,
   projectUpdates,
+  onNewProject,
 }: {
   data: TacDashboardData;
   milestones: MilestoneItem[];
   projectUpdates: ProjectUpdate[];
+  onNewProject?: () => void;
 }) {
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
 
@@ -1154,6 +1191,12 @@ function ProjectHeader({
       </div>
 
       <div className="header-actions">
+        {onNewProject ? (
+          <button className="new-project-button" type="button" onClick={onNewProject}>
+            <Plus aria-hidden="true" />
+            <span>New project</span>
+          </button>
+        ) : null}
         <div className="download-control" data-download-menu-root>
           <button
             className="download-button"
@@ -1241,7 +1284,14 @@ function ProjectTabButton({
   tab: ProjectTab;
   onTabSelect: (view: DashboardView) => void;
 }) {
-  const mappedView = tab.label === "Overview" ? "overview" : tab.label === "Milestones" ? "milestones" : null;
+  const mappedView: DashboardView | null =
+    tab.label === "Overview"
+      ? "overview"
+      : tab.label === "Milestones"
+        ? "milestones"
+        : tab.label === "Activity"
+          ? "pulse"
+          : null;
 
   return (
     <button
