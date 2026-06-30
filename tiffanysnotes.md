@@ -52,14 +52,52 @@ The "Share a project update" button (Overview) opens a chat modal driven by an a
 - **Next steps** added as a 4th Atlas capture category (new "Plan next steps" chip; flows through tray, summary, milestone-attach, document).
 - Atlas chat **moved to the app shell** so "Tell Atlas what changed" opens from any view.
 
+### Light/dark theme system + light-default redesign _(new: `src/theme.ts`; `styles.css` retokenized)_
+- **Whole app restyled** to a clean/minimal SaaS look (Linear / Notion / Vercel): off-white page, white cards, thin borders, near-invisible shadows, big bold editorial H1, pill buttons/inputs, **color reserved for meaning only** (amber = warning, green = success, blue = data). Primary action buttons are dark navy `#1A2030` in light mode.
+- **Semantic CSS token layer** — every color in `styles.css` now resolves to a variable. `:root` holds the **light** theme (the new default); `:root[data-theme="dark"]` overrides preserve the original dark look. ~300 hardcoded colors were converted to tokens (`--surface`, `--text`, `--border`, `--accent`, `--blue`, `--green`, `--amber`, `--rose`, `--scrim`, …). **Rule going forward: no raw hex — always use a token** so both themes stay correct.
+- **Working light/dark toggle** — `useTheme` hook in `theme.ts`, persisted to `localStorage` (`tac-theme`), applied as `data-theme` on `<html>` and seeded before first paint (no flash). Toggle buttons live in the dashboard header (moon/sun) and the Opportunity Brief top bar + rail.
+
+### Opportunity Brief — scroll & auto-expanding fields
+- **Page scroll fix** — `body` had `overflow-y: hidden`, so once a section filled past the viewport the bottom was unreachable. The workbench is now pinned to viewport height with internal scroll on the editor body, brief list, and rail.
+- **Auto-growing text areas** — every `VoiceTextArea` now expands to fit its content (and shrinks back), so long answers no longer hide behind a tiny inner scrollbar.
+
+### T.A.C Certified → a real, monitored certification _(new: `certification.ts`, `CertificationBadge.tsx`)_
+- The hardcoded "T.A.C Certified" badge is now **live**. A rubric is recomputed from dashboard state — **Evidence current** (update logged ≤ 7 days), **Outcome & health** (business outcome defined + health ≥ 70%), **Ownership & blockers** (every milestone owned + blockers acknowledged).
+- **Auto + manual** — once the rubric passes the badge reads "Ready to certify"; a lead clicks **Certify** (records *certified by / on*). Certification **expires weekly** (Expiring state) and **auto-lapses** if a criterion regresses.
+- Click the badge → a panel showing each check pass/fail with a "fix it" deep-link; sign-off persists in localStorage (`tac.certification:<project>`).
+
+### Overview build-out
+- **Business Outcome is editable** — an Edit/Done toggle turns the title, prompt, and four columns into inline fields; persists per project (`tac.businessOutcome:`).
+- **Delivery Health is functional** — the score is **computed from milestone task completion** (not a static 50), status auto-derives (Behind / On track / Healthy), and the 7-day chart plots a **real series** ending at the live score (tone-colored, accumulates over time). Live health feeds the certification rubric. _(new: `overview.ts`)_
+- **Commit cadence** card — last-7-day daily-commit record + streak + last commit, from the GitHub connection in Activity. _(new: `CommitCadence.tsx`)_
+- **Most Active leaderboard** — ranks the team by activity (owned/done tasks, milestones owned, reports filed). Styled as a sports-graphic (big number, diagonal green→**blue/orange** name banner, fake headshot photos via `randomuser.me`). _(new: `TeamLeaderboard.tsx`)_
+- **To-do · Up next** card — auto-populates from milestone task due dates (soonest first, overdue/today/upcoming tones); checking an item completes the task. _(new: `TodoList.tsx`)_
+- Commit cadence + leaderboard + to-do share one aligned utility row under the Overview cards.
+
+### Cadence tab → calendar of sprint reviews / meetings _(new: `cadence.ts`, `CadenceSection.tsx`, `VoiceoverRecorder.tsx`, `CommitCadence.tsx`)_
+- The dead **Cadence** tab is now a **month / week calendar of meetings**. "New cadence" creates a recurring series with a **meeting-type preset** (Sprint Review, Daily Standup, Sprint Planning, Retro, 1:1, Demo, All-hands…) and frequency (Daily/Weekly/Biweekly/Monthly); **multiple cadences coexist**. "Log past meeting" back-dates a one-off.
+- Click a meeting → a detail modal: **attendance**, **decisions/notes**, **action items** (attachable to milestones), status (Upcoming/Due/Completed/Missed, auto from date, drives the tab badge), **Add to calendar** (real `.ics`), and a **review packet** (Word/PDF).
+- **Weekly demonstration** — each meeting records a **voiceover** (mic → Whisper transcript, in-session playback; transcript is the saved deliverable). Surfaced in the **Reporting** tab as a "Weekly Demonstrations" panel (submitted vs missing + packet).
+
+### Project Pulse tidy-up
+- Removed the **Meetings** activity source + its seeded signal (meetings now live in the Cadence tab).
+- Bumped ~15 small font sizes on the Pulse page for legibility.
+
+### Executive Dashboard _(new module: `src/components/executive/`)_
+- New **top-level view** reached via a **blue icon in the left sidebar** (`App.tsx` adds an `"executive"` view). A portfolio summary across **6 mock projects** (varied health, activity, certification, leads with photos).
+- **Momentum / "wellness" layout**: greeting header + avatar, a **Portfolio Health hero** (big %, week-over-week delta, smooth area chart, "Great momentum!" badge, 2×2 stats), a **Momentum / Biggest Win / Focus** row, **Projects Overview** + **Most Active This Week** lists, and an encouragement banner + certifications card.
+- **Executive metrics** rolled up: Needs-attention (Behind / blocked / stale), health trend **▲/▼**, and a **certification breakdown** (ready · expiring · lapsed).
+- Palette is **blue + orange (no green)**; added theme-aware `--orange` / `--orange-bg` tokens. All data-driven and works light + dark.
+
 ---
 
 ## Open items / caveats
 
 - **OpenAI:** model is hard-coded `gpt-5.4`; if unavailable it falls back to a local draft. No key = full demo via fallbacks.
-- **Connectors** (GitHub, Calendar, Gemini, Drive) are visual/simulated; Pulse signals are seeded, not live.
-- **State is in-memory** (except the Opportunity Brief, which uses localStorage); a refresh resets dashboard/pulse data.
-- **Voice** in the dashboard chat is a simulated transcript; the Opportunity Brief uses real Whisper when a key is present.
+- **Connectors** (GitHub real via PAT; Calendar/Gemini/Drive visual/simulated); Pulse signals are seeded, not live.
+- **Persistence** — these now survive refresh via localStorage: Opportunity Briefs, theme, certification sign-off, business outcome, health trend, and the cadence (series + meetings). The rest of the dashboard/pulse state is still in-memory and resets on refresh.
+- **Voice** — dashboard chat uses a simulated transcript; the Opportunity Brief and the cadence **voiceover** use real Whisper when a key is present. Voiceover **audio is session-only** (the transcript is the saved deliverable).
+- **Executive Dashboard** uses **6 mock projects** (not the live T.A.C); its extra rail icons and the "View all / See all / Review now" links are visual for now.
 - PDF/print uses the browser print dialog (no one-click PDF library yet).
 Running summary of product/interface changes made in this repo.
 

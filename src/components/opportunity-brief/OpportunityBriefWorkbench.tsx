@@ -7,9 +7,11 @@ import {
   FileText,
   KeyRound,
   Lightbulb,
+  Moon,
   Plus,
   RefreshCw,
   Sparkles,
+  SunMedium,
   Trash2,
   Wand2,
   PlayCircle,
@@ -44,7 +46,31 @@ function buildPriorContext(brief: OpportunityBrief, currentSectionId: number): s
 
 type EditorStep = "metadata" | number | "assemble";
 
-export function OpportunityBriefWorkbench({ onExit }: { onExit: () => void }) {
+type ThemeControls = {
+  theme?: "light" | "dark";
+  onToggleTheme?: () => void;
+};
+
+function ThemeToggle({ theme, onToggleTheme }: ThemeControls) {
+  return (
+    <button
+      className="brief-theme-toggle"
+      type="button"
+      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      title={theme === "dark" ? "Light theme" : "Dark theme"}
+      aria-pressed={theme === "dark"}
+      onClick={onToggleTheme}
+    >
+      {theme === "dark" ? <SunMedium aria-hidden="true" /> : <Moon aria-hidden="true" />}
+    </button>
+  );
+}
+
+export function OpportunityBriefWorkbench({
+  onExit,
+  theme,
+  onToggleTheme,
+}: { onExit: () => void } & ThemeControls) {
   const [briefs, setBriefs] = useState<OpportunityBrief[]>(() => loadBriefs());
   const [apiKey, setApiKeyState] = useState<string>(() => loadApiKey());
   const [activeBriefId, setActiveBriefId] = useState<string | null>(null);
@@ -120,6 +146,8 @@ export function OpportunityBriefWorkbench({ onExit }: { onExit: () => void }) {
         onResume={setActiveBriefId}
         onDelete={handleDelete}
         onExit={onExit}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
     );
   }
@@ -132,6 +160,8 @@ export function OpportunityBriefWorkbench({ onExit }: { onExit: () => void }) {
       onUpdate={(updater) => updateBrief(activeBrief.id, updater)}
       onBack={() => setActiveBriefId(null)}
       onExit={onExit}
+      theme={theme}
+      onToggleTheme={onToggleTheme}
     />
   );
 }
@@ -145,6 +175,8 @@ function BriefListView({
   onResume,
   onDelete,
   onExit,
+  theme,
+  onToggleTheme,
 }: {
   briefs: OpportunityBrief[];
   apiKey: string;
@@ -154,15 +186,18 @@ function BriefListView({
   onResume: (id: string) => void;
   onDelete: (id: string) => void;
   onExit: () => void;
-}) {
+} & ThemeControls) {
   return (
     <div className="brief-app">
       <div className="brief-list">
         <header className="brief-list-header">
-          <button className="brief-back" type="button" onClick={onExit}>
-            <ArrowLeft aria-hidden="true" />
-            <span>Back to dashboard</span>
-          </button>
+          <div className="brief-list-topbar">
+            <button className="brief-back" type="button" onClick={onExit}>
+              <ArrowLeft aria-hidden="true" />
+              <span>Back to dashboard</span>
+            </button>
+            <ThemeToggle theme={theme} onToggleTheme={onToggleTheme} />
+          </div>
           <div>
             <span className="brief-eyebrow">Team Alignment Center</span>
             <h1>Opportunity Brief Workbench</h1>
@@ -278,6 +313,8 @@ function BriefEditor({
   onUpdate,
   onBack,
   onExit,
+  theme,
+  onToggleTheme,
 }: {
   brief: OpportunityBrief;
   apiKey: string;
@@ -285,7 +322,7 @@ function BriefEditor({
   onUpdate: (updater: (brief: OpportunityBrief) => OpportunityBrief) => void;
   onBack: () => void;
   onExit: () => void;
-}) {
+} & ThemeControls) {
   const [step, setStep] = useState<EditorStep>("metadata");
   const savedCount = brief.sections.filter((section) => section.saved).length;
 
@@ -302,10 +339,13 @@ function BriefEditor({
   return (
     <div className="brief-app">
       <aside className="brief-rail">
-        <button className="brief-back" type="button" onClick={onBack}>
-          <ArrowLeft aria-hidden="true" />
-          <span>All briefs</span>
-        </button>
+        <div className="brief-rail-top">
+          <button className="brief-back" type="button" onClick={onBack}>
+            <ArrowLeft aria-hidden="true" />
+            <span>All briefs</span>
+          </button>
+          <ThemeToggle theme={theme} onToggleTheme={onToggleTheme} />
+        </div>
         <div className="brief-rail-progress">
           <span>{savedCount}/8 sections complete</span>
           <div className="brief-progress-track">

@@ -15,9 +15,24 @@ import type { MilestonesSectionData, NavItem, ProjectTab, TacDashboardData, Team
 
 // The project team roster — shared by the milestones assignee picker and the Atlas owner picker.
 export const teamMembers: TeamMember[] = [
-  { id: "tiffany", name: "Tiffany Tomlin", avatar: "person" },
-  { id: "erinski", name: "Erinski Easy", avatar: "person" },
-  { id: "mikale", name: "Mikale Meetoo", avatar: "person" },
+  {
+    id: "tiffany",
+    name: "Tiffany Tomlin",
+    avatar: "person",
+    photo: "https://randomuser.me/api/portraits/women/68.jpg",
+  },
+  {
+    id: "erinski",
+    name: "Erinski Easy",
+    avatar: "person",
+    photo: "https://randomuser.me/api/portraits/men/32.jpg",
+  },
+  {
+    id: "mikale",
+    name: "Mikale Meetoo",
+    avatar: "person",
+    photo: "https://randomuser.me/api/portraits/men/75.jpg",
+  },
 ];
 
 export const sidebarItems: NavItem[] = [
