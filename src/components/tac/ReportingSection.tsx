@@ -1,11 +1,33 @@
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Plus, Search } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  FileText,
+  Plus,
+  Search,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ReportEntry, ReportingPerson, ReportingSectionData } from "./types";
+
+// A weekly-demonstration submission, derived from sprint-review voiceovers.
+export type ReportingDemonstration = {
+  id: string;
+  label: string;
+  dateLabel: string;
+  statusLabel: string;
+  submitted: boolean;
+  transcript?: string;
+  recordedAtLabel?: string;
+};
 
 type ReportingSectionProps = {
   data: ReportingSectionData;
   reports: ReportEntry[];
   onAddReport: () => void;
+  demonstrations?: ReportingDemonstration[];
+  onDownloadPacket?: (id: string) => void;
 };
 
 function todayLabel() {
@@ -35,7 +57,13 @@ function reportSummary(report: ReportEntry) {
   return summary?.text ?? status?.text ?? progress?.text ?? blocker?.text ?? risk?.text ?? firstDetail?.text ?? "No summary captured.";
 }
 
-export function ReportingSection({ data, reports, onAddReport }: ReportingSectionProps) {
+export function ReportingSection({
+  data,
+  reports,
+  onAddReport,
+  demonstrations,
+  onDownloadPacket,
+}: ReportingSectionProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
@@ -84,6 +112,50 @@ export function ReportingSection({ data, reports, onAddReport }: ReportingSectio
           <span>Add today's report</span>
         </button>
       </div>
+
+      {demonstrations && demonstrations.length > 0 ? (
+        <div className="reporting-demos">
+          <div className="reporting-section-heading">
+            <span>Weekly demonstrations</span>
+            <strong>
+              {demonstrations.filter((demo) => demo.submitted).length}/{demonstrations.length} submitted
+            </strong>
+          </div>
+          <div className="reporting-demo-grid">
+            {demonstrations.map((demo) => (
+              <article
+                className={demo.submitted ? "reporting-demo-card is-submitted" : "reporting-demo-card is-missing"}
+                key={demo.id}
+              >
+                <div className="reporting-card-topline">
+                  <span className={demo.submitted ? "reporting-status is-filed" : "reporting-status is-missing"}>
+                    <span aria-hidden="true" />
+                    {demo.submitted ? "Submitted" : "Missing"}
+                  </span>
+                  <time>{demo.dateLabel}</time>
+                </div>
+                <div className="reporting-person-row">
+                  <h2>{demo.label}</h2>
+                  <span className="reporting-demo-status">{demo.statusLabel}</span>
+                </div>
+                <span className="reporting-card-label">Voiceover transcript</span>
+                <p>{demo.submitted ? demo.transcript : "No voiceover recorded for this demonstration yet."}</p>
+                <div className="reporting-card-footer">
+                  <span className="reporting-demo-meta">
+                    {demo.recordedAtLabel ? `Recorded ${demo.recordedAtLabel}` : "Awaiting submission"}
+                  </span>
+                  {onDownloadPacket ? (
+                    <button type="button" onClick={() => onDownloadPacket(demo.id)}>
+                      <FileText aria-hidden="true" />
+                      Packet
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="reporting-toolbar">
         <label className="reporting-search">

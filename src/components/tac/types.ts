@@ -37,6 +37,7 @@ export type TeamMember = {
   id: string;
   name: string;
   avatar: "person";
+  photo?: string;
 };
 
 export type MilestoneStatus = "Completed" | "In progress" | "Not started";

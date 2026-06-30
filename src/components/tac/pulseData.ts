@@ -1,7 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight,
-  CalendarClock,
   CircleCheck,
   Eye,
   FileText,
@@ -83,13 +82,6 @@ export const ACTIVITY_SOURCES: ActivitySource[] = [
     native: true,
   },
   {
-    group: "Meetings",
-    icon: CalendarClock,
-    connectors: "Google Calendar · Gemini transcripts",
-    detects: "Decisions and action items",
-    types: ["technical", "non-technical"],
-  },
-  {
     group: "Documents",
     icon: FileText,
     connectors: "Google Drive",
@@ -131,18 +123,6 @@ export const SEEDED_SIGNALS: ActivitySignal[] = [
     proposed: [
       { category: "progress", text: "Checkout redesign completed" },
       { category: "watching", text: "Testing timeline may slip" },
-    ],
-  },
-  {
-    id: "sig-meeting",
-    type: "non-technical",
-    icon: CalendarClock,
-    source: "Customer sync",
-    detail: "Customer requested reporting changes",
-    summary: "Customer asked for a new reporting feature; product needs to estimate effort.",
-    proposed: [
-      { category: "decision", text: "Customer requested new reporting feature" },
-      { category: "nextStep", text: "Product team to estimate effort" },
     ],
   },
   {

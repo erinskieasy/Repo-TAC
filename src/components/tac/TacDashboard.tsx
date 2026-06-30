@@ -10,9 +10,11 @@ import {
   FilePenLine,
   FileText,
   Maximize2,
+  LayoutDashboard,
   LogOut,
   MessageSquareText,
   Mic,
+  Moon,
   PencilLine,
   Plus,
   Save,
@@ -33,7 +35,41 @@ import {
   printHtmlAsPdf,
   wrapHtmlDocument,
 } from "./documentExport";
+import {
+  buildSprintReviewHtml,
+  cadenceBadgeCount,
+  deriveReviewStatus,
+  formatReviewDate,
+  loadCadence,
+  saveCadence,
+  seedCadence,
+  type CadenceState,
+} from "./cadence";
+import { CadenceSection } from "./CadenceSection";
+import { CertificationBadge, CertificationPanel } from "./CertificationBadge";
+import { CommitCadence } from "./CommitCadence";
+import { TeamLeaderboard } from "./TeamLeaderboard";
+import { TodoList } from "./TodoList";
+import {
+  deriveStatus,
+  evaluateRubric,
+  loadSignOff,
+  saveSignOff,
+  VALIDITY_MS,
+  type CertSignOff,
+} from "./certification";
 import { MilestonesSection } from "./MilestonesSection";
+import {
+  computeHealthScore,
+  deriveHealthStatus,
+  loadBusinessOutcome,
+  loadHealthTrend,
+  pushHealthPoint,
+  saveBusinessOutcome,
+  saveHealthTrend,
+  seedHealthTrend,
+  type BusinessOutcome,
+} from "./overview";
 import { ProjectPulse } from "./ProjectPulse";
 import { ReportingSection } from "./ReportingSection";
 import { milestoneProjectTabs, projectTabs, sidebarItems, tacDashboardData, teamMembers } from "./tacData";
@@ -59,7 +95,7 @@ type ProjectUpdate = {
   entries: { label: string; text: string }[];
 };
 
-type DashboardView = "overview" | "milestones" | "pulse" | "reporting";
+type DashboardView = "overview" | "milestones" | "pulse" | "reporting" | "cadence";
 
 type TacDashboardProps = {
   data?: TacDashboardData;
@@ -67,6 +103,9 @@ type TacDashboardProps = {
   navItems?: NavItem[];
   view?: DashboardView;
   onNewProject?: () => void;
+  onOpenExecutive?: () => void;
+  theme?: "light" | "dark";
+  onToggleTheme?: () => void;
 };
 
 type DocumentationChatMessage = {
@@ -210,6 +249,9 @@ export function TacDashboard({
   navItems = sidebarItems,
   view = "milestones",
   onNewProject,
+  onOpenExecutive,
+  theme = "light",
+  onToggleTheme,
 }: TacDashboardProps) {
   const [activeView, setActiveView] = useState<DashboardView>(view);
   const [documentationChatOpen, setDocumentationChatOpen] = useState(false);
@@ -219,6 +261,80 @@ export function TacDashboard({
   const [milestones, setMilestones] = useState<MilestoneItem[]>(data.milestones.items);
   const [projectUpdates, setProjectUpdates] = useState<ProjectUpdate[]>([]);
   const [reports, setReports] = useState<ReportEntry[]>([]);
+  // Business outcome is editable and persists per project.
+  const [businessOutcome, setBusinessOutcome] = useState<BusinessOutcome>(
+    () => loadBusinessOutcome(data.project) ?? data.businessOutcome,
+  );
+  // Delivery health is derived from milestone task completion; the trend accumulates over time.
+  const [healthTrend, setHealthTrend] = useState<number[]>(
+    () => loadHealthTrend(data.project) ?? seedHealthTrend(computeHealthScore(data.milestones.items)),
+  );
+  // Sprint cadence (reviews + config) persists per project.
+  const [cadence, setCadence] = useState<CadenceState>(
+    () => loadCadence(data.project) ?? seedCadence(Date.now()),
+  );
+  // Manual certification sign-off persists per project; the rubric is recomputed live.
+  const [certSignOff, setCertSignOff] = useState<CertSignOff | null>(() => loadSignOff(data.project));
+  const [certPanelOpen, setCertPanelOpen] = useState(false);
+
+  function updateCadence(next: CadenceState) {
+    setCadence(next);
+    saveCadence(data.project, next);
+  }
+
+  function completeTask(milestoneId: string, taskId: string) {
+    setMilestones((current) =>
+      current.map((milestone) =>
+        milestone.id === milestoneId
+          ? {
+              ...milestone,
+              tasks: milestone.tasks.map((task) =>
+                task.id === taskId ? { ...task, status: "Done" } : task,
+              ),
+            }
+          : milestone,
+      ),
+    );
+  }
+
+  const healthScore = computeHealthScore(milestones);
+  const healthStatus = deriveHealthStatus(healthScore);
+
+  // Record the live score onto the trend whenever it changes.
+  useEffect(() => {
+    setHealthTrend((current) => {
+      const next = pushHealthPoint(current, healthScore);
+      if (next !== current) {
+        saveHealthTrend(data.project, next);
+      }
+      return next;
+    });
+  }, [healthScore, data.project]);
+
+  function updateBusinessOutcome(next: BusinessOutcome) {
+    setBusinessOutcome(next);
+    saveBusinessOutcome(data.project, next);
+  }
+
+  // The single source of truth for everything downstream (certification, operating doc):
+  // base seed data with the live health score and edited business outcome folded in.
+  const liveData: TacDashboardData = { ...data, healthScore, healthStatus, businessOutcome };
+
+  function handleCertify() {
+    const stamp = Date.now();
+    const next: CertSignOff = {
+      certifiedBy: userFirstName,
+      certifiedAt: stamp,
+      validUntil: stamp + VALIDITY_MS,
+    };
+    setCertSignOff(next);
+    saveSignOff(data.project, next);
+  }
+
+  function handleRevoke() {
+    setCertSignOff(null);
+    saveSignOff(data.project, null);
+  }
 
   // Attach a logged update to a milestone as real tasks (typed by captured category).
   function handleAttachUpdate(
@@ -284,20 +400,77 @@ export function TacDashboard({
 
   const latestAtlasNote = useMemo(() => getLatestAtlasNote(projectUpdates), [projectUpdates]);
   const operatingDocumentHtml = useMemo(
-    () => buildProjectDocumentHtml(data, milestones, projectUpdates),
-    [data, milestones, projectUpdates],
+    () => buildProjectDocumentHtml(liveData, milestones, projectUpdates),
+    [liveData, milestones, projectUpdates],
   );
+  const cadenceBadge = cadenceBadgeCount(cadence.reviews, Date.now());
   const resolvedTabs = useMemo(() => {
     const baseTabs = tabs ?? (activeView === "milestones" ? milestoneProjectTabs : projectTabs);
     return baseTabs.map((tab) => ({
       ...tab,
+      count: tab.label === "Cadence" ? cadenceBadge : tab.count,
       active:
         (activeView === "overview" && tab.label === "Overview") ||
         (activeView === "milestones" && tab.label === "Milestones") ||
         (activeView === "pulse" && tab.label === "Activity") ||
-        (activeView === "reporting" && tab.label === "Reporting"),
+        (activeView === "reporting" && tab.label === "Reporting") ||
+        (activeView === "cadence" && tab.label === "Cadence"),
     }));
-  }, [activeView, tabs]);
+  }, [activeView, tabs, cadenceBadge]);
+
+  // Live certification rubric — recomputed from current dashboard state on each render.
+  const certNow = Date.now();
+  const certRubric = evaluateRubric(liveData, milestones, projectUpdates, certNow);
+  const certStatus = deriveStatus(certRubric, certSignOff, certNow);
+  const reportingRequired = data.reporting.requiredToday.length;
+  const reportingRequiredNames = new Set(
+    data.reporting.requiredToday.map((person) => person.name.toLowerCase()),
+  );
+  const reportingFiled = new Set(
+    reports
+      .map((report) => report.reporterName.toLowerCase())
+      .filter((name) => reportingRequiredNames.has(name)),
+  ).size;
+
+  // Weekly demonstrations surfaced in Reporting: sprint reviews that are due/past or already
+  // have a voiceover, marked submitted once a transcript exists.
+  const demoNow = Date.now();
+  const demonstrations = cadence.reviews
+    .map((review) => ({ review, status: deriveReviewStatus(review, demoNow) }))
+    .filter(
+      ({ review, status }) =>
+        Boolean(review.voiceover?.transcript?.trim()) ||
+        status === "completed" ||
+        status === "missed" ||
+        status === "due",
+    )
+    .sort((a, b) => b.review.scheduledAt - a.review.scheduledAt)
+    .map(({ review, status }) => ({
+      id: review.id,
+      label: review.label,
+      dateLabel: formatReviewDate(review.scheduledAt),
+      statusLabel: status.charAt(0).toUpperCase() + status.slice(1),
+      submitted: Boolean(review.voiceover?.transcript?.trim()),
+      transcript: review.voiceover?.transcript,
+      recordedAtLabel: review.voiceover
+        ? new Date(review.voiceover.recordedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+        : undefined,
+    }));
+
+  function handleDownloadDemoPacket(reviewId: string) {
+    const review = cadence.reviews.find((item) => item.id === reviewId);
+    if (!review) {
+      return;
+    }
+    const html = buildSprintReviewHtml(
+      review,
+      deriveReviewStatus(review, Date.now()),
+      liveData,
+      milestones,
+      projectUpdates,
+    );
+    downloadHtmlAsDoc(html, `${review.id}-review-packet-${documentFileStamp()}.doc`);
+  }
 
   useEffect(() => {
     if (!documentationChatOpen) {
@@ -329,13 +502,15 @@ export function TacDashboard({
 
   return (
     <div className="tac-shell">
-      <Sidebar items={navItems} />
+      <Sidebar items={navItems} onOpenExecutive={onOpenExecutive} />
       <main className="tac-workspace">
         <ProjectHeader
-          data={data}
+          data={liveData}
           milestones={milestones}
           projectUpdates={projectUpdates}
           onNewProject={onNewProject}
+          theme={theme}
+          onToggleTheme={onToggleTheme}
         />
         <ProjectTabs tabs={resolvedTabs} onTabSelect={setActiveView} />
         <section
@@ -366,10 +541,22 @@ export function TacDashboard({
               onConfirmSignal={handleLogUpdate}
               onTellAtlas={() => setDocumentationChatOpen(true)}
             />
+          ) : activeView === "cadence" ? (
+            <CadenceSection
+              projectName={data.project}
+              data={liveData}
+              milestones={milestones}
+              projectUpdates={projectUpdates}
+              cadence={cadence}
+              onChange={updateCadence}
+              onAttachActionItem={handleAttachUpdate}
+            />
           ) : activeView === "reporting" ? (
             <ReportingSection
               data={data.reporting}
               reports={reports}
+              demonstrations={demonstrations}
+              onDownloadPacket={handleDownloadDemoPacket}
               onAddReport={() => setDocumentationChatOpen(true)}
             />
           ) : (
@@ -377,10 +564,7 @@ export function TacDashboard({
               <div className="overview-heading-row">
                 <div className="overview-title-group">
                   <h1 id="overview-title">{data.pageTitle}</h1>
-                  <span className="tac-certified-badge overview-certified-badge">
-                    <Check aria-hidden="true" />
-                    <span>T.A.C Certified</span>
-                  </span>
+                  <CertificationBadge status={certStatus} onOpen={() => setCertPanelOpen(true)} />
                 </div>
                 <button
                   className="milestone-primary-action overview-doc-action"
@@ -395,8 +579,9 @@ export function TacDashboard({
 
               <div className="overview-grid">
                 <DeliveryHealthCard
-                  score={data.healthScore}
-                  status={data.healthStatus}
+                  score={healthScore}
+                  status={healthStatus}
+                  trend={healthTrend}
                   dates={data.healthDates}
                 />
                 <OperationalAttentionCard
@@ -406,11 +591,13 @@ export function TacDashboard({
                 <DeliveryMomentumCard items={data.momentum} />
               </div>
 
-              <BusinessOutcomePanel
-                title={data.businessOutcome.title}
-                prompt={data.businessOutcome.prompt}
-                columns={data.businessOutcome.columns}
-              />
+              <div className="overview-utility-row">
+                <CommitCadence />
+                <TeamLeaderboard members={teamMembers} milestones={milestones} reports={reports} />
+                <TodoList milestones={milestones} onCompleteTask={completeTask} />
+              </div>
+
+              <BusinessOutcomePanel outcome={businessOutcome} onChange={updateBusinessOutcome} />
 
               {documentationChatOpen ? (
                 <DocumentationChatWindow
@@ -451,6 +638,22 @@ export function TacDashboard({
           onDownloadPdf={() => printHtmlAsPdf(operatingDocumentHtml)}
         />
       ) : null}
+      {certPanelOpen ? (
+        <CertificationPanel
+          status={certStatus}
+          rubric={certRubric}
+          signOff={certSignOff}
+          reporting={{ filed: reportingFiled, required: reportingRequired }}
+          onCertify={handleCertify}
+          onRevoke={handleRevoke}
+          onClose={() => setCertPanelOpen(false)}
+          onNavigate={(view) => {
+            setActiveView(view);
+            setCertPanelOpen(false);
+          }}
+        />
+      ) : null}
+
       <button className="assistant-launcher" type="button" aria-label="Open assistant" title="Open assistant">
         <Sparkles aria-hidden="true" />
       </button>
@@ -1119,7 +1322,7 @@ function DocumentationConfigPanel({
   );
 }
 
-function Sidebar({ items }: { items: NavItem[] }) {
+function Sidebar({ items, onOpenExecutive }: { items: NavItem[]; onOpenExecutive?: () => void }) {
   return (
     <aside className="side-rail" aria-label="Primary navigation">
       <button className="brand-mark" type="button" aria-label="Home" title="Home">
@@ -1127,6 +1330,17 @@ function Sidebar({ items }: { items: NavItem[] }) {
       </button>
 
       <nav className="rail-nav">
+        {onOpenExecutive ? (
+          <button
+            className="rail-button is-exec"
+            type="button"
+            aria-label="Executive dashboard"
+            title="Executive dashboard"
+            onClick={onOpenExecutive}
+          >
+            <LayoutDashboard aria-hidden="true" />
+          </button>
+        ) : null}
         {items.map((item) => (
           <button
             key={item.label}
@@ -1322,11 +1536,15 @@ function ProjectHeader({
   milestones,
   projectUpdates,
   onNewProject,
+  theme,
+  onToggleTheme,
 }: {
   data: TacDashboardData;
   milestones: MilestoneItem[];
   projectUpdates: ProjectUpdate[];
   onNewProject?: () => void;
+  theme?: "light" | "dark";
+  onToggleTheme?: () => void;
 }) {
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
 
@@ -1426,8 +1644,15 @@ function ProjectHeader({
             K
           </kbd>
         </label>
-        <button className="icon-action" type="button" aria-label="Theme" title="Theme">
-          <SunMedium aria-hidden="true" />
+        <button
+          className="icon-action"
+          type="button"
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          title={theme === "dark" ? "Light theme" : "Dark theme"}
+          aria-pressed={theme === "dark"}
+          onClick={onToggleTheme}
+        >
+          {theme === "dark" ? <SunMedium aria-hidden="true" /> : <Moon aria-hidden="true" />}
         </button>
         <button className="notification-button" type="button" aria-label="Notifications" title="Notifications">
           <Bell aria-hidden="true" />
@@ -1483,7 +1708,9 @@ function ProjectTabButton({
           ? "pulse"
           : tab.label === "Reporting"
             ? "reporting"
-            : null;
+            : tab.label === "Cadence"
+              ? "cadence"
+              : null;
 
   return (
     <button
@@ -1513,12 +1740,29 @@ function ProjectTabButton({
 function DeliveryHealthCard({
   score,
   status,
+  trend,
   dates,
 }: {
   score: number;
   status: string;
+  trend: number[];
   dates: string[];
 }) {
+  // Map a 0–100 score onto the chart's plot band (y=28 is 100%, y=156 is 0%).
+  const X_START = 58;
+  const X_END = 346;
+  const Y_TOP = 28;
+  const Y_BOTTOM = 156;
+  const points = trend.map((value, index) => {
+    const ratio = trend.length > 1 ? index / (trend.length - 1) : 1;
+    const x = X_START + ratio * (X_END - X_START);
+    const y = Y_BOTTOM - (Math.max(0, Math.min(100, value)) / 100) * (Y_BOTTOM - Y_TOP);
+    return { x, y };
+  });
+  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${X_END} ${Y_BOTTOM} L${X_START} ${Y_BOTTOM} Z`;
+  const tone = score >= 70 ? "green" : score >= 50 ? "amber" : "rose";
+
   return (
     <section className="dashboard-card health-card" aria-labelledby="delivery-health-title">
       <div className="card-kicker" id="delivery-health-title">
@@ -1528,17 +1772,15 @@ function DeliveryHealthCard({
         <div className="health-score">
           <span>Health score</span>
           <strong>{score}%</strong>
-          <em>{status}</em>
+          <em className={`tone-${tone}`}>{status}</em>
         </div>
-        <div className="trend-chart" aria-label="7-day trend health score 50 percent">
+        <div
+          className={`trend-chart tone-${tone}`}
+          role="img"
+          aria-label={`7-day delivery health trend, currently ${score} percent — ${status}`}
+        >
           <div className="trend-label">7-day trend</div>
-          <svg viewBox="0 0 360 168" role="img" aria-hidden="true">
-            <defs>
-              <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#f0ba48" stopOpacity="0.16" />
-                <stop offset="100%" stopColor="#f0ba48" stopOpacity="0" />
-              </linearGradient>
-            </defs>
+          <svg viewBox="0 0 360 168" aria-hidden="true">
             <line className="grid-line" x1="24" y1="28" x2="346" y2="28" />
             <line className="grid-line" x1="24" y1="92" x2="346" y2="92" />
             <line className="grid-line" x1="24" y1="156" x2="346" y2="156" />
@@ -1551,8 +1793,11 @@ function DeliveryHealthCard({
             <text className="axis-label" x="0" y="160">
               0
             </text>
-            <path d="M58 92 H346 V156 H58 Z" fill="url(#trendFill)" />
-            <path className="trend-line" d="M58 92 H346" />
+            <path className="trend-area" d={areaPath} />
+            <path className="trend-line" d={linePath} />
+            {points.map((point, index) => (
+              <circle key={index} className="trend-dot" cx={point.x} cy={point.y} r={index === points.length - 1 ? 3.4 : 0} />
+            ))}
           </svg>
           <div className="date-axis">
             {dates.map((date) => (
@@ -1622,42 +1867,113 @@ function DeliveryMomentumCard({ items }: { items: DeliveryMomentumItem[] }) {
 }
 
 function BusinessOutcomePanel({
-  title,
-  prompt,
-  columns,
+  outcome,
+  onChange,
 }: {
-  title: string;
-  prompt: string;
-  columns: BusinessOutcomeColumn[];
+  outcome: BusinessOutcome;
+  onChange: (next: BusinessOutcome) => void;
 }) {
-  const leftColumns = [columns[0], columns[2]].filter(Boolean);
-  const rightColumns = [columns[1], columns[3]].filter(Boolean);
+  const [editing, setEditing] = useState(false);
+  const { title, prompt, columns } = outcome;
+  const leftColumns = [0, 2].filter((index) => columns[index]);
+  const rightColumns = [1, 3].filter((index) => columns[index]);
+
+  function setColumn(index: number, patch: Partial<BusinessOutcomeColumn>) {
+    onChange({
+      ...outcome,
+      columns: columns.map((column, i) => (i === index ? { ...column, ...patch } : column)),
+    });
+  }
 
   return (
     <section className="business-panel" aria-labelledby="business-title">
+      <button
+        className={editing ? "business-edit-toggle is-editing" : "business-edit-toggle"}
+        type="button"
+        onClick={() => setEditing((current) => !current)}
+      >
+        {editing ? <Check aria-hidden="true" /> : <PencilLine aria-hidden="true" />}
+        <span>{editing ? "Done" : "Edit"}</span>
+      </button>
       <div className="business-prompt">
-        <h2 id="business-title">{title}</h2>
-        <p>{prompt}</p>
+        {editing ? (
+          <input
+            className="business-edit-title"
+            aria-label="Business outcome title"
+            value={title}
+            onChange={(event) => onChange({ ...outcome, title: event.target.value })}
+          />
+        ) : (
+          <h2 id="business-title">{title}</h2>
+        )}
+        {editing ? (
+          <textarea
+            className="business-edit-prompt"
+            aria-label="Business outcome prompt"
+            value={prompt}
+            rows={2}
+            onChange={(event) => onChange({ ...outcome, prompt: event.target.value })}
+          />
+        ) : (
+          <p>{prompt}</p>
+        )}
       </div>
       <div className="business-columns">
-        {leftColumns.map((column) => (
-          <BusinessOutcomeCopy column={column} key={column.eyebrow} />
+        {leftColumns.map((index) => (
+          <BusinessOutcomeCopy
+            key={index}
+            column={columns[index]}
+            editing={editing}
+            onChange={(patch) => setColumn(index, patch)}
+          />
         ))}
       </div>
       <div className="business-columns">
-        {rightColumns.map((column) => (
-          <BusinessOutcomeCopy column={column} key={column.eyebrow} />
+        {rightColumns.map((index) => (
+          <BusinessOutcomeCopy
+            key={index}
+            column={columns[index]}
+            editing={editing}
+            onChange={(patch) => setColumn(index, patch)}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function BusinessOutcomeCopy({ column }: { column: BusinessOutcomeColumn }) {
+function BusinessOutcomeCopy({
+  column,
+  editing,
+  onChange,
+}: {
+  column: BusinessOutcomeColumn;
+  editing: boolean;
+  onChange: (patch: Partial<BusinessOutcomeColumn>) => void;
+}) {
   return (
     <div className="business-copy">
-      <span>{column.eyebrow}</span>
-      <p>{column.body}</p>
+      {editing ? (
+        <input
+          className="business-edit-eyebrow"
+          aria-label="Column heading"
+          value={column.eyebrow}
+          onChange={(event) => onChange({ eyebrow: event.target.value })}
+        />
+      ) : (
+        <span>{column.eyebrow}</span>
+      )}
+      {editing ? (
+        <textarea
+          className="business-edit-body"
+          aria-label="Column body"
+          value={column.body}
+          rows={3}
+          onChange={(event) => onChange({ body: event.target.value })}
+        />
+      ) : (
+        <p>{column.body}</p>
+      )}
     </div>
   );
 }

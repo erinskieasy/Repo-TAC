@@ -1,5 +1,5 @@
 import { Check, Mic } from "lucide-react";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { transcribeAudio } from "./openai";
 
 type VoiceTextAreaProps = {
@@ -28,6 +28,18 @@ export function VoiceTextArea({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow the field to fit its content so answers never hide behind an inner scrollbar.
+  // Resetting to "auto" first lets the box shrink back when text is removed; the `rows`
+  // attribute keeps a minimum height because scrollHeight can't fall below it.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value, rows]);
 
   function insertTranscript(text: string) {
     const next = value.trim() ? `${value.trim()} ${text}` : text;
