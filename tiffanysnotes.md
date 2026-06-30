@@ -61,6 +61,10 @@ The "Share a project update" button (Overview) opens a chat modal driven by an a
 - **Page scroll fix** — `body` had `overflow-y: hidden`, so once a section filled past the viewport the bottom was unreachable. The workbench is now pinned to viewport height with internal scroll on the editor body, brief list, and rail.
 - **Auto-growing text areas** — every `VoiceTextArea` now expands to fit its content (and shrinks back), so long answers no longer hide behind a tiny inner scrollbar.
 
+---
+
+## 2026-06-27 — Since last push (local, not yet committed/pushed)
+
 ### T.A.C Certified → a real, monitored certification _(new: `certification.ts`, `CertificationBadge.tsx`)_
 - The hardcoded "T.A.C Certified" badge is now **live**. A rubric is recomputed from dashboard state — **Evidence current** (update logged ≤ 7 days), **Outcome & health** (business outcome defined + health ≥ 70%), **Ownership & blockers** (every milestone owned + blockers acknowledged).
 - **Auto + manual** — once the rubric passes the badge reads "Ready to certify"; a lead clicks **Certify** (records *certified by / on*). Certification **expires weekly** (Expiring state) and **auto-lapses** if a criterion regresses.
@@ -74,7 +78,11 @@ The "Share a project update" button (Overview) opens a chat modal driven by an a
 - **To-do · Up next** card — auto-populates from milestone task due dates (soonest first, overdue/today/upcoming tones); checking an item completes the task. _(new: `TodoList.tsx`)_
 - Commit cadence + leaderboard + to-do share one aligned utility row under the Overview cards.
 
-### Cadence tab → calendar of sprint reviews / meetings _(new: `cadence.ts`, `CadenceSection.tsx`, `VoiceoverRecorder.tsx`, `CommitCadence.tsx`)_
+---
+
+## 2026-06-28 — Since last push (local, not yet committed/pushed)
+
+### Cadence tab → calendar of sprint reviews / meetings _(new: `cadence.ts`, `CadenceSection.tsx`, `VoiceoverRecorder.tsx`)_
 - The dead **Cadence** tab is now a **month / week calendar of meetings**. "New cadence" creates a recurring series with a **meeting-type preset** (Sprint Review, Daily Standup, Sprint Planning, Retro, 1:1, Demo, All-hands…) and frequency (Daily/Weekly/Biweekly/Monthly); **multiple cadences coexist**. "Log past meeting" back-dates a one-off.
 - Click a meeting → a detail modal: **attendance**, **decisions/notes**, **action items** (attachable to milestones), status (Upcoming/Due/Completed/Missed, auto from date, drives the tab badge), **Add to calendar** (real `.ics`), and a **review packet** (Word/PDF).
 - **Weekly demonstration** — each meeting records a **voiceover** (mic → Whisper transcript, in-session playback; transcript is the saved deliverable). Surfaced in the **Reporting** tab as a "Weekly Demonstrations" panel (submitted vs missing + packet).
@@ -82,6 +90,10 @@ The "Share a project update" button (Overview) opens a chat modal driven by an a
 ### Project Pulse tidy-up
 - Removed the **Meetings** activity source + its seeded signal (meetings now live in the Cadence tab).
 - Bumped ~15 small font sizes on the Pulse page for legibility.
+
+---
+
+## 2026-06-29 — Since last push (local, not yet committed/pushed)
 
 ### Executive Dashboard _(new module: `src/components/executive/`)_
 - New **top-level view** reached via a **blue icon in the left sidebar** (`App.tsx` adds an `"executive"` view). A portfolio summary across **6 mock projects** (varied health, activity, certification, leads with photos).
